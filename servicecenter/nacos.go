@@ -17,7 +17,7 @@ func newNacosServiceCenter() ServiceCenter {
 type nacosServiceCenter struct {
 }
 
-func (n *nacosServiceCenter) GetService(name string) Service {
+func (n *nacosServiceCenter) Get(name string) Service {
 	return Service{}
 }
 

@@ -9,7 +9,7 @@ const (
 	Nacos = "nacos"
 )
 
-func NewServiceCenter(scType ServiceCenterType) (ServiceCenter, error) {
+func New(scType ServiceCenterType) (ServiceCenter, error) {
 	switch scType {
 	case K8S:
 		return newK8sServiceCenter(), nil
@@ -20,7 +20,7 @@ func NewServiceCenter(scType ServiceCenterType) (ServiceCenter, error) {
 }
 
 type ServiceCenter interface {
-	GetService(name string) Service
+	Get(name string) Service
 }
 
 type Service struct {

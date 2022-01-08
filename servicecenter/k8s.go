@@ -18,7 +18,7 @@ func newK8sServiceCenter() ServiceCenter {
 type k8sServiceCenter struct {
 }
 
-func (n *k8sServiceCenter) GetService(name string) Service {
+func (n *k8sServiceCenter) Get(name string) Service {
 	return Service{}
 }
 
