@@ -16,3 +16,4 @@ spec:
       - name: raptor
         image: superabee/raptor:v0
         imagePullPolicy: Always
+      serviceAccountName: raptor
