@@ -23,7 +23,7 @@ func main() {
 	})
 
 	service, _ := sc.GetService("demo")
-	log.Println(service)
+	log.Printf("%+v\n", service)
 
 	cc, _ := configcenter.New(configcenter.Nacos)
 
@@ -38,7 +38,7 @@ func main() {
 	time.Sleep(time.Second)
 
 	cc.OnChange("config-1", func(config configcenter.Config) {
-		log.Printf("config update: %s\n", config)
+		log.Printf("config update: %+v\n", config)
 	})
 
 	cc.Save(configcenter.Config{
