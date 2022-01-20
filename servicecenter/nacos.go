@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/nacos-group/nacos-sdk-go/clients"
+	"github.com/nacos-group/nacos-sdk-go/clients/naming_client"
 	"github.com/nacos-group/nacos-sdk-go/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/vo"
 )
@@ -11,18 +12,6 @@ import (
 var _ ServiceCenter = (*nacosServiceCenter)(nil)
 
 func newNacosServiceCenter() ServiceCenter {
-	return &nacosServiceCenter{}
-}
-
-type nacosServiceCenter struct {
-}
-
-func (n *nacosServiceCenter) Get(name string) Service {
-	return Service{}
-}
-
-// ignore
-func NacosNamingTest() {
 	clientConfig := constant.ClientConfig{
 		TimeoutMs:           5000,
 		NotLoadCacheAtStart: true,
@@ -47,40 +36,45 @@ func NacosNamingTest() {
 		},
 	)
 	if err != nil {
-		log.Fatalf("new naming client fail: %v", err)
+		log.Fatal(err)
 	}
 
-	success, err := namingClient.RegisterInstance(vo.RegisterInstanceParam{
-		Ip:          "10.0.0.11",
-		Port:        8848,
-		ServiceName: "demo.go",
-		Weight:      10,
+	return &nacosServiceCenter{
+		nameingClient: namingClient,
+	}
+}
+
+type nacosServiceCenter struct {
+	nameingClient naming_client.INamingClient
+}
+
+func (n *nacosServiceCenter) Register(param RegisterParam) (bool, error) {
+	return n.nameingClient.RegisterInstance(vo.RegisterInstanceParam{
+		Ip:          param.Ip,
+		Port:        param.Port,
+		ServiceName: param.ServiceName,
 		Enable:      true,
 		Healthy:     true,
 		Ephemeral:   true,
-		Metadata:    map[string]string{"idc": "shanghai"},
+		Metadata:    map[string]string{"app": "raptor"},
 	})
-	if err != nil || !success {
-		log.Fatalf("register fail: %v", err)
-	}
+}
 
-	services, err := namingClient.GetAllServicesInfo(vo.GetAllServiceInfoParam{PageSize: 10})
+func (n *nacosServiceCenter) GetService(name string) (Service, error) {
+	service, err := n.nameingClient.GetService(vo.GetServiceParam{ServiceName: name})
 	if err != nil {
-		log.Fatalf("get services fail: %v", err)
+		return Service{}, err
 	}
-
-	for _, serviceName := range services.Doms {
-		service, err := namingClient.GetService(vo.GetServiceParam{ServiceName: serviceName})
-		if err != nil {
-			log.Printf("get service %v fail: %v", serviceName, err)
-		}
-		log.Println(service)
+	var instances []Instance
+	for _, i := range service.Hosts {
+		instances = append(instances, Instance{
+			Ip:      i.Ip,
+			Port:    i.Port,
+			Healthy: i.Healthy,
+		})
 	}
-
-	// configClient, err := clients.NewConfigClient(
-	// 	vo.NacosClientParam{
-	// 		ClientConfig:  &clientConfig,
-	// 		ServerConfigs: serverConfigs,
-	// 	},
-	// )
+	return Service{
+		Name:  service.Name,
+		Hosts: instances,
+	}, nil
 }

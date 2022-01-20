@@ -20,10 +20,12 @@ func New(ccType ConfigCenterType) (ConfigCenter, error) {
 }
 
 type ConfigCenter interface {
-	Get(name string) Config
+	Save(config Config) (bool, error)
+	Get(id string) (Config, error)
+	OnChange(id string, handler func(config Config)) error
 }
 
 type Config struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	ID      string `json:"id"`
+	Content string `json:"content"`
 }

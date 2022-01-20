@@ -20,7 +20,14 @@ func New(scType ServiceCenterType) (ServiceCenter, error) {
 }
 
 type ServiceCenter interface {
-	Get(name string) Service
+	Register(param RegisterParam) (bool, error)
+	GetService(name string) (Service, error)
+}
+
+type RegisterParam struct {
+	Ip          string
+	Port        uint64
+	ServiceName string
 }
 
 type Service struct {

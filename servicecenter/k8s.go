@@ -18,8 +18,12 @@ func newK8sServiceCenter() ServiceCenter {
 type k8sServiceCenter struct {
 }
 
-func (n *k8sServiceCenter) Get(name string) Service {
-	return Service{}
+func (k *k8sServiceCenter) Register(param RegisterParam) (bool, error) {
+	return true, nil
+}
+
+func (k *k8sServiceCenter) GetService(name string) (Service, error) {
+	return Service{}, nil
 }
 
 func K8SNamingTest() {
