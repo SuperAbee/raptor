@@ -2,6 +2,7 @@ package configcenter
 
 import (
 	"log"
+	"raptor/constants"
 
 	"github.com/nacos-group/nacos-sdk-go/clients"
 	"github.com/nacos-group/nacos-sdk-go/clients/config_client"
@@ -10,8 +11,6 @@ import (
 )
 
 var _ ConfigCenter = (*nacosConfigCenter)(nil)
-
-const group = "raptor"
 
 func newNacosConfigCenter() ConfigCenter {
 	clientConfig := constant.ClientConfig{
@@ -54,7 +53,7 @@ type nacosConfigCenter struct {
 func (n *nacosConfigCenter) Save(config Config) (bool, error) {
 	return n.configClient.PublishConfig(vo.ConfigParam{
 		DataId:  config.ID,
-		Group:   group,
+		Group:   constants.NACOS_GROUP,
 		Content: config.Content,
 	})
 }
@@ -62,7 +61,7 @@ func (n *nacosConfigCenter) Save(config Config) (bool, error) {
 func (n *nacosConfigCenter) Get(id string) (Config, error) {
 	content, err := n.configClient.GetConfig(vo.ConfigParam{
 		DataId: id,
-		Group:  group,
+		Group:  constants.NACOS_GROUP,
 	})
 
 	if err != nil {
@@ -78,7 +77,7 @@ func (n *nacosConfigCenter) Get(id string) (Config, error) {
 func (n *nacosConfigCenter) OnChange(id string, handler func(config Config)) error {
 	return n.configClient.ListenConfig(vo.ConfigParam{
 		DataId: id,
-		Group:  group,
+		Group:  constants.NACOS_GROUP,
 		OnChange: func(namespace, group, dataId, data string) {
 			handler(Config{
 				ID:      dataId,

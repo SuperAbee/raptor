@@ -2,6 +2,7 @@ package servicecenter
 
 import (
 	"log"
+	"raptor/constants"
 
 	"github.com/nacos-group/nacos-sdk-go/clients"
 	"github.com/nacos-group/nacos-sdk-go/clients/naming_client"
@@ -57,11 +58,15 @@ func (n *nacosServiceCenter) Register(param RegisterParam) (bool, error) {
 		Healthy:     true,
 		Ephemeral:   true,
 		Metadata:    map[string]string{"app": "raptor"},
+		GroupName:   constants.NACOS_GROUP,
 	})
 }
 
 func (n *nacosServiceCenter) GetService(name string) (Service, error) {
-	service, err := n.nameingClient.GetService(vo.GetServiceParam{ServiceName: name})
+	service, err := n.nameingClient.GetService(vo.GetServiceParam{
+		ServiceName: name,
+		GroupName:   constants.NACOS_GROUP,
+	})
 	if err != nil {
 		return Service{}, err
 	}
