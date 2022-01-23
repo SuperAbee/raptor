@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"raptor/constants"
 
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -31,23 +32,23 @@ type k8sServiceCenter struct {
 }
 
 func (k *k8sServiceCenter) Register(param RegisterParam) (bool, error) {
-	return true, nil
+	return false, fmt.Errorf("Register in k8s is unnecessary")
 }
 
 func (k *k8sServiceCenter) GetService(name string) (Service, error) {
 	api := k.clientSet.CoreV1()
 
-	labelSelector := v1.LabelSelector{MatchLabels: map[string]string{"app": name}}
-	listOptions := v1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()}
+	labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{"app": name}}
+	listOptions := metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()}
 
-	serviceList, err := api.Services("default").List(context.Background(), listOptions)
+	serviceList, err := api.Services(constants.K8S_NAMESPACE).List(context.Background(), listOptions)
 	if err != nil {
 		return Service{}, err
 	}
 	if len(serviceList.Items) == 0 || len(serviceList.Items[0].Spec.Ports) == 0 {
 		return Service{}, fmt.Errorf("service with label: 'app: %s' not found", name)
 	}
-	podList, err := api.Pods("default").List(context.Background(), listOptions)
+	podList, err := api.Pods(constants.K8S_NAMESPACE).List(context.Background(), listOptions)
 	if err != nil {
 		return Service{}, err
 	}

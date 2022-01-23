@@ -57,7 +57,7 @@ func (n *nacosServiceCenter) Register(param RegisterParam) (bool, error) {
 		Enable:      true,
 		Healthy:     true,
 		Ephemeral:   true,
-		Metadata:    map[string]string{"app": "raptor"},
+		Metadata:    map[string]string{"app": constants.K8S_APP_LABEL},
 		GroupName:   constants.NACOS_GROUP,
 	})
 }
