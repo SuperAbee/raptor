@@ -11,14 +11,14 @@ func main() {
 	sc, _ := servicecenter.New(servicecenter.Nacos)
 
 	sc.Register(servicecenter.RegisterParam{
-		Ip:          "10.0.0.2",
+		Ip:          "127.0.0.1",
 		Port:        1234,
 		ServiceName: "demo",
 	})
 
 	sc.Register(servicecenter.RegisterParam{
-		Ip:          "10.0.0.3",
-		Port:        1234,
+		Ip:          "127.0.0.1",
+		Port:        8888,
 		ServiceName: "demo",
 	})
 
@@ -45,5 +45,5 @@ func main() {
 		ID:      "config-1",
 		Content: "hello time " + time.Now().String(),
 	})
-	time.Sleep(time.Second)
+	time.Sleep(time.Second * 1000)
 }

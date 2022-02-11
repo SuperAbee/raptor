@@ -2,12 +2,14 @@ package excutor
 
 import (
 	"bytes"
-	"encoding/json"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"raptor/proto"
+	"raptor/servicecenter"
 	"reflect"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -16,12 +18,41 @@ type Excutor interface {
 }
 
 func ExcutorTask(config proto.Config) bool {
+	sc, _ := servicecenter.New(servicecenter.Nacos)
+
+	service, _ := sc.GetService(config.TargetService)
+
+	hosts := service.Hosts
+
+	var healthyHosts []servicecenter.Instance
+
+	for _, instance := range hosts {
+		if instance.Healthy == true {
+			healthyHosts = append(healthyHosts, instance)
+		}
+	}
+
+	n := len(healthyHosts)
+
+	//当前无健康服务
+	if n < 1 {
+		return false
+	}
+
 	//该任务不分片,直接执行
 	if reflect.DeepEqual(config.ShardingStrategy, proto.ShardingStrategy{}) {
-		if config.Task.Type == "GET" {
-			Get(config.Task.URI)
-		} else {
+		//组装url
+		var build strings.Builder
+		build.WriteString(healthyHosts[0].Ip)
+		build.WriteString(":")
+		build.WriteString(strconv.FormatUint(healthyHosts[0].Port, 10))
+		build.WriteString(config.Task.URI)
+		url := build.String()
 
+		if config.Task.Type == "GET" {
+			Get(url)
+		} else {
+			Post(url, config.Task.Body, config.Task.Header, "application/json")
 		}
 	} else {
 
@@ -59,19 +90,36 @@ func Get(url string) string {
 // 发送POST请求
 // url：         请求地址
 // data：        POST请求提交的数据
+// header:		 POST请求头内容
 // contentType： 请求体格式，如：application/json
 // content：     请求放回的内容
-func Post(url string, data interface{}, contentType string) string {
+func Post(url string, body string, header map[string]string, contentType string) string {
 
-	// 超时时间：5秒
+	var jsonStr = []byte(body)
+	//fmt.Println("jsonStr", jsonStr)
+	//fmt.Println("new_str", bytes.NewBuffer(jsonStr))
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+	// req.Header.Set("X-Custom-Header", "myvalue")
+	req.Header.Set("Content-Type", contentType)
+
+	if header != nil && len(header) > 0 {
+		for key, value := range header {
+			req.Header.Set(key, value)
+		}
+	}
+
 	client := &http.Client{Timeout: 5 * time.Second}
-	jsonStr, _ := json.Marshal(data)
-	resp, err := client.Post(url, contentType, bytes.NewBuffer(jsonStr))
+	resp, err := client.Do(req)
 	if err != nil {
 		panic(err)
 	}
 	defer resp.Body.Close()
 
+	//fmt.Println("response Status:", resp.Status)
+	//fmt.Println("response Headers:", resp.Header)
 	result, _ := ioutil.ReadAll(resp.Body)
+	//fmt.Println("response Body:", string(result))
+
 	return string(result)
 }

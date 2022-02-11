@@ -14,9 +14,10 @@ type Config struct {
 }
 
 type Task struct {
-	Type string // 任务类型
-	URI  string // URI
-	Body string // 任务体
+	Type   string            // 任务类型
+	URI    string            // URI
+	Body   string            // 任务体
+	Header map[string]string // 任务头
 }
 
 type Trigger struct {
