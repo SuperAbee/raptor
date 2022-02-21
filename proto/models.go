@@ -2,15 +2,15 @@ package proto
 
 // Config 用户提交的任务配置
 type Config struct {
-	ID               string        // 唯一标识，后台自动生成
-	Name             string        // 配置名
-	TargetService    string        // 被调服务
-	Task                           // 任务
-	Trigger                        // 触发条件
-	Dependencies     []*Dependency // 任务依赖
-	RetryStrategy                  // 失败处理策略
-	ShardingStrategy               // 分片策略
-	ShardingResults  []*Sharding   // 静态分片结果
+	ID               string      // 唯一标识，后台自动生成
+	Name             string      // 配置名
+	TargetService    string      // 被调服务
+	Task                         // 任务
+	Trigger                      // 触发条件
+	Dependencies     Dependency  // 任务依赖
+	RetryStrategy                // 失败处理策略
+	ShardingStrategy             // 分片策略
+	ShardingResults  []*Sharding // 静态分片结果
 }
 
 type Task struct {
@@ -24,13 +24,18 @@ type Trigger struct {
 }
 
 type Dependency struct {
-	Nodes []*string //涉及的所有任务id
-	Links []*edge   //任务依赖关系
+	Nodes map[string]string //涉及的所有任务id
+	Links []Edge            //任务依赖关系
 }
 
-type edge struct {
-	from string //前置条件
-	to   string //后置任务
+type NodeEntity struct {
+	Id     string
+	status string
+}
+
+type Edge struct {
+	From string //前置条件
+	To   string //后置任务
 }
 
 type RetryStrategy struct {
