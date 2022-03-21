@@ -281,7 +281,7 @@ func (h *HttpExecutor) Execute(jobInstance proto.JobInstance) error {
 							status, _ := Get(url)
 							shardingRequest := ShardingRequest{
 								config.ID,
-								config.ShardingCount,
+								config.ShardingStrategy.ShardingCount,
 								xx,
 								status,
 								jobInstance.ExecuteCount,
@@ -299,7 +299,7 @@ func (h *HttpExecutor) Execute(jobInstance proto.JobInstance) error {
 							status, _ := Post(url, config.Task.Body, config.Task.Header, "application/json")
 							shardingRequest := ShardingRequest{
 								config.ID,
-								config.ShardingCount,
+								config.ShardingStrategy.ShardingCount,
 								xx,
 								status,
 								jobInstance.ExecuteCount,
@@ -336,7 +336,7 @@ func (h *HttpExecutor) Execute(jobInstance proto.JobInstance) error {
 							status, _ := Get(url)
 							shardingRequest := ShardingRequest{
 								config.ID,
-								config.ShardingCount,
+								config.ShardingStrategy.ShardingCount,
 								xx,
 								status,
 								jobInstance.ExecuteCount,
@@ -354,7 +354,7 @@ func (h *HttpExecutor) Execute(jobInstance proto.JobInstance) error {
 							status, _ := Post(url, config.Task.Body, config.Task.Header, "application/json")
 							shardingRequest := ShardingRequest{
 								config.ID,
-								config.ShardingCount,
+								config.ShardingStrategy.ShardingCount,
 								xx,
 								status,
 								jobInstance.ExecuteCount,
@@ -386,7 +386,7 @@ func (h *HttpExecutor) Execute(jobInstance proto.JobInstance) error {
 							status, _ := Get(url)
 							shardingRequest := ShardingRequest{
 								config.ID,
-								config.ShardingCount,
+								config.ShardingStrategy.ShardingCount,
 								xx,
 								status,
 								jobInstance.ExecuteCount,
@@ -404,7 +404,7 @@ func (h *HttpExecutor) Execute(jobInstance proto.JobInstance) error {
 							status, _ := Post(url, config.Task.Body, config.Task.Header, "application/json")
 							shardingRequest := ShardingRequest{
 								config.ID,
-								config.ShardingCount,
+								config.ShardingStrategy.ShardingCount,
 								xx,
 								status,
 								jobInstance.ExecuteCount,
@@ -444,7 +444,7 @@ func (h *HttpExecutor) Execute(jobInstance proto.JobInstance) error {
 						status, _ := Get(url)
 						shardingRequest := ShardingRequest{
 							config.ID,
-							config.ShardingCount,
+							config.ShardingStrategy.ShardingCount,
 							xx,
 							status,
 							jobInstance.ExecuteCount,
@@ -462,7 +462,7 @@ func (h *HttpExecutor) Execute(jobInstance proto.JobInstance) error {
 						status, _ := Post(url, config.Task.Body, config.Task.Header, "application/json")
 						shardingRequest := ShardingRequest{
 							config.ID,
-							config.ShardingCount,
+							config.ShardingStrategy.ShardingCount,
 							xx,
 							status,
 							jobInstance.ExecuteCount,
