@@ -1,6 +1,5 @@
 package proto
 
-// ServiceCenter 张晨光要求姚新聪提供的服务中心接口
 type ServiceCenter interface {
 	// GetTargetServices 获取被调服务信息
 	GetTargetServices(name string) []Service

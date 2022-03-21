@@ -1,22 +1,33 @@
 package configcenter
 
-import "fmt"
+import (
+	"sync"
+)
 
-type ConfigCenterType string
+var (
+	Type string
+	cc ConfigCenter
+	once = sync.Once{}
+)
 
 const (
 	K8S   = "k8s"
 	Nacos = "nacos"
+	Memory = "memory"
 )
 
-func New(ccType ConfigCenterType) (ConfigCenter, error) {
-	switch ccType {
-	case K8S:
-		return newK8sConfigCenter(), nil
-	case Nacos:
-		return newNacosConfigCenter(), nil
-	}
-	return nil, fmt.Errorf("ConfigCenterType '%v' not supported", ccType)
+func New() ConfigCenter {
+	once.Do(func() {
+		switch Type {
+		case K8S:
+			cc = newK8sConfigCenter()
+		case Nacos:
+			cc = newNacosConfigCenter()
+		default:
+			cc = newMemoryConfigCenter()
+		}
+	})
+	return cc
 }
 
 type ConfigCenter interface {

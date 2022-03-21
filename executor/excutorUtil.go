@@ -1,4 +1,4 @@
-package excutor
+package executor
 
 import (
 	"bytes"
@@ -7,18 +7,13 @@ import (
 	"net/http"
 	"raptor/proto"
 	"raptor/servicecenter"
-	"reflect"
 	"strconv"
 	"strings"
 	"time"
 )
 
-type Excutor interface {
-	ExcutorTask(config proto.Config) bool
-}
-
-func ExcutorTask(config proto.Config) bool {
-	sc, _ := servicecenter.New(servicecenter.Nacos)
+// GetHealthyHosts 获取当前访问服务的健康实例表
+func GetHealthyHosts(config proto.Config) []servicecenter.Instance {
 
 	service, _ := sc.GetService(config.TargetService)
 
@@ -32,38 +27,55 @@ func ExcutorTask(config proto.Config) bool {
 		}
 	}
 
-	n := len(healthyHosts)
-
-	//当前无健康服务
-	if n < 1 {
-		return false
-	}
-
-	//该任务不分片,直接执行
-	if reflect.DeepEqual(config.ShardingStrategy, proto.ShardingStrategy{}) {
-		//组装url
-		var build strings.Builder
-		build.WriteString(healthyHosts[0].Ip)
-		build.WriteString(":")
-		build.WriteString(strconv.FormatUint(healthyHosts[0].Port, 10))
-		build.WriteString(config.Task.URI)
-		url := build.String()
-
-		if config.Task.Type == "GET" {
-			Get(url)
-		} else {
-			Post(url, config.Task.Body, config.Task.Header, "application/json")
-		}
-	} else {
-
-	}
-	return true
+	return healthyHosts
 }
 
-// 发送GET请求
+// GetHealthyHostsByName 获取当前访问服务的健康实例表
+func GetHealthyHostsByName(targetService string) []servicecenter.Instance {
+
+	service, _ := sc.GetService(targetService)
+
+	hosts := service.Hosts
+
+	var healthyHosts []servicecenter.Instance
+
+	for _, instance := range hosts {
+		if instance.Healthy == true {
+			healthyHosts = append(healthyHosts, instance)
+		}
+	}
+
+	return healthyHosts
+}
+
+func GetUrl(ip string, port uint64, uri string, parameter string) string {
+	//组装url
+	var build strings.Builder
+	build.WriteString("http://")
+	build.WriteString(ip)
+	build.WriteString(":")
+	build.WriteString(strconv.FormatUint(port, 10))
+	build.WriteString(uri)
+	if parameter != "" {
+		build.WriteString("/" + parameter)
+	}
+	return build.String()
+}
+
+func GetHalfUrl(uri string, parameter string) string {
+	//组装url
+	var build strings.Builder
+	build.WriteString(uri)
+	if parameter != "" {
+		build.WriteString("/" + parameter)
+	}
+	return build.String()
+}
+
+// Get 发送GET请求
 // url：         请求地址
 // response：    请求返回的内容
-func Get(url string) string {
+func Get(url string) (int, string) {
 
 	// 超时时间：5秒
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -84,16 +96,18 @@ func Get(url string) string {
 		}
 	}
 
-	return result.String()
+	status, _ := strconv.Atoi(resp.Status[0:3])
+
+	return status, result.String()
 }
 
-// 发送POST请求
+// Post 发送POST请求
 // url：         请求地址
 // data：        POST请求提交的数据
 // header:		 POST请求头内容
 // contentType： 请求体格式，如：application/json
 // content：     请求放回的内容
-func Post(url string, body string, header map[string]string, contentType string) string {
+func Post(url string, body string, header map[string]string, contentType string) (int, string) {
 
 	var jsonStr = []byte(body)
 	//fmt.Println("jsonStr", jsonStr)
@@ -121,5 +135,7 @@ func Post(url string, body string, header map[string]string, contentType string)
 	result, _ := ioutil.ReadAll(resp.Body)
 	//fmt.Println("response Body:", string(result))
 
-	return string(result)
+	status, _ := strconv.Atoi(resp.Status[0:3])
+
+	return status, string(result)
 }

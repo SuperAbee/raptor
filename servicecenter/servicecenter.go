@@ -1,22 +1,34 @@
 package servicecenter
 
-import "fmt"
-
-type ServiceCenterType string
+import (
+	"sync"
+)
 
 const (
 	K8S   = "k8s"
 	Nacos = "nacos"
+	Memory = "memory"
 )
 
-func New(scType ServiceCenterType) (ServiceCenter, error) {
-	switch scType {
-	case K8S:
-		return newK8sServiceCenter(), nil
-	case Nacos:
-		return newNacosServiceCenter(), nil
-	}
-	return nil, fmt.Errorf("ServiceCenterType '%v' not supported", scType)
+var (
+	Type string
+	sc ServiceCenter
+	once = sync.Once{}
+)
+
+func New() ServiceCenter {
+	once.Do(func() {
+		switch Type {
+		case K8S:
+			sc = newK8sServiceCenter()
+		case Nacos:
+			sc = newNacosServiceCenter()
+		default:
+			sc = newMemoryServiceCenter()
+		}
+	})
+	return sc
+
 }
 
 type ServiceCenter interface {
