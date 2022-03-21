@@ -23,7 +23,6 @@ func init() {
 }
 
 func ExecuteSingleTask(jobInstance *proto.JobInstance) {
-	jobInstance.Config.InstanceID = jobInstance.ID
 	fmt.Println("任务 %s 开始执行 时间%s\n", jobInstance.ID, time.Now().String())
 	go filter.NewChain(*jobInstance).Do()
 }
@@ -137,7 +136,6 @@ func findAndExcute(jobInstanceID, mainID string, depenConfig *proto.Dependency) 
 			log.Println(err)
 			continue
 		}
-		taskConfig.InstanceID = jobInstanceID
 		//go test(jobInstanceID, mainID, taskConfig.ID)
 		go filter.NewChain(proto.JobInstance{Config: taskConfig})
 	}
