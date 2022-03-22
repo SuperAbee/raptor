@@ -36,6 +36,7 @@ func (k *k8sServiceCenter) Register(param RegisterParam) (bool, error) {
 }
 
 func (k *k8sServiceCenter) GetService(name string) (Service, error) {
+	log.Printf("GetService.name: %v\n", name)
 	api := k.clientSet.CoreV1()
 
 	labelSelector := metav1.LabelSelector{MatchLabels: map[string]string{"app": name}}
