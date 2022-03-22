@@ -13,6 +13,7 @@ import (
 func (j *JobCenter) Register(config proto.Config) error {
 	//选取节点
 	Scheduler, err := j.ServiceCenter.GetService("scheduler")
+	log.Printf("scheduler: %+v\n", Scheduler)
 	if err != nil {
 		log.Println(err.Error())
 		return err

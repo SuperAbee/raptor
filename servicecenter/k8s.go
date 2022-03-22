@@ -42,6 +42,7 @@ func (k *k8sServiceCenter) GetService(name string) (Service, error) {
 	listOptions := metav1.ListOptions{LabelSelector: labels.Set(labelSelector.MatchLabels).String()}
 
 	serviceList, err := api.Services(constants.K8S_NAMESPACE).List(context.Background(), listOptions)
+	log.Printf("serviceList: %+v\n", serviceList)
 	if err != nil {
 		return Service{}, err
 	}
@@ -49,6 +50,7 @@ func (k *k8sServiceCenter) GetService(name string) (Service, error) {
 		return Service{}, fmt.Errorf("service with label: 'app: %s' not found", name)
 	}
 	podList, err := api.Pods(constants.K8S_NAMESPACE).List(context.Background(), listOptions)
+	log.Printf("podList: %v\n", podList)
 	if err != nil {
 		return Service{}, err
 	}
