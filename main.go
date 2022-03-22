@@ -2,6 +2,8 @@ package main
 
 import (
 	"flag"
+	"fmt"
+	"os"
 	"raptor/configcenter"
 	"raptor/router"
 	"raptor/servicecenter"
@@ -18,6 +20,13 @@ func main() {
 	flag.Parse()
 	servicecenter.Type = *sc
 	configcenter.Type = *cc
+
+	fmt.Println(servicecenter.Type)
+	fmt.Println(configcenter.Type)
+
+	for index, arg := range os.Args {
+		fmt.Printf("args[%d]=%v\n", index, arg)
+	}
 
 	r := gin.New()
 	router.Route(r)
