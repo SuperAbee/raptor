@@ -1,6 +1,8 @@
 package configcenter
 
 import (
+	"log"
+	"os"
 	"sync"
 )
 
@@ -18,6 +20,10 @@ const (
 
 func New() ConfigCenter {
 	once.Do(func() {
+		if t := os.Getenv("CONFIG_CENTER"); t != "" {
+			log.Printf("CONFIG_CENTER: %v\n", t)
+			Type = t
+		}
 		switch Type {
 		case K8S:
 			cc = newK8sConfigCenter()

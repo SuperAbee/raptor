@@ -1,6 +1,8 @@
 package servicecenter
 
 import (
+	"log"
+	"os"
 	"sync"
 )
 
@@ -18,6 +20,10 @@ var (
 
 func New() ServiceCenter {
 	once.Do(func() {
+		if t := os.Getenv("SERVICE_CENTER"); t != "" {
+			log.Printf("SERVICE_CENTER: %v\n", t)
+			Type = t
+		}
 		switch Type {
 		case K8S:
 			sc = newK8sServiceCenter()
