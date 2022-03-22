@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"raptor/configcenter"
 	"raptor/router"
@@ -20,6 +21,8 @@ func main() {
 	flag.Parse()
 	servicecenter.Type = *sc
 	configcenter.Type = *cc
+
+	log.Println("here")
 
 	fmt.Println(servicecenter.Type)
 	fmt.Println(configcenter.Type)
