@@ -6,50 +6,74 @@ import (
 	"log"
 	"net/http"
 	"raptor/dependence"
+	"raptor/eventcenter"
 	"raptor/proto"
+	"raptor/servicecenter"
 )
 
-func onJobFailed(instance proto.JobInstance) {
-	log.Println(instance.ID + " failed, start failover")
+func onJobTimeout(event *eventcenter.Event) {
+	jobCenter := New()
+	instance := event.Body.(proto.JobInstance)
+	log.Println(instance.ID + " ")
+
 	deleyExecutor, err := dependence.NewDeleyExecutor()
 	if err != nil {
 		log.Println(err.Error())
 	}
 
-	if instance.IsMaster {
-		//主节点重试并通知从节点任务结果
-		log.Println("retry ", instance.ID)
-		instance.ExecuteCount++
-		deleyExecutor.AddOrRun(instance)
-		notifyJobResult(instance, "failed")
-	} else {
-		//从节点检查主节点健康状态
-		cc := jobCenter.ConfigCenter
-		content, _ := cc.Get(instance.Config.ID)
-		var runningJob RunningJob
-		json.Unmarshal([]byte(content.Content), &runningJob)
-		var host Node
-		for _, node := range runningJob.Hosts {
-			if node.IsMaster {
-				host = node
-				break
-			}
+	//依次检查前置节点健康状态
+	cc := jobCenter.ConfigCenter
+	content, _ := cc.Get(instance.Config.ID)
+	var runningJob RunningJob
+	json.Unmarshal([]byte(content.Content), &runningJob)
+
+	var remainNodes []Node
+	for i, node := range runningJob.Hosts {
+		if node.Ip == jobCenter.Ip {
+			remainNodes = runningJob.Hosts[i:]
+			break
 		}
-		url := fmt.Sprintf("%s:%v%s", host.Ip, host.Port, pingUrl)
-		if _, err := http.Get(url); err != nil {
-			//主节点失联, 进入选举流程
-			log.Println("master connect failed, start election")
-			if election(&runningJob) {
-				//如果选举成功则继续主节点工作
-				log.Println("retry ", instance.ID)
-				instance.ExecuteCount++
-				deleyExecutor.AddOrRun(instance)
-			}
+		if err := ping(node); err == nil {
+			//前置节点健康，由前置节点接替主节点
+			return
 		}
 	}
+
+	//前置节点失联，接替主节点
+	log.Println("previous nodes connect failed, replace master")
+	//补充不足的从节点
+	Scheduler, err := jobCenter.ServiceCenter.GetService("scheduler")
+	if err != nil {
+		panic(err)
+	}
+	selectedHosts := selectHosts(Scheduler)
+	for i := 0; len(remainNodes) < 3; i++ {
+		if !contains(remainNodes, selectedHosts[i]) {
+			remainNodes = append(remainNodes, Node{selectedHosts[i].Ip, selectedHosts[i].Port, false})
+		}
+	}
+	runningJob.Hosts = remainNodes
+	//作为主节点执行任务
+	instance.IsMaster = true
+	deleyExecutor.AddOrRun(instance)
+
 }
 
-func election(runningJob *RunningJob) bool {
-	//进行选举
+func replace(runningJob *RunningJob) bool {
 	return true
+}
+
+func contains(nodes []Node, host servicecenter.Instance) bool {
+	for _, node := range nodes {
+		if node.Ip == host.Ip {
+			return true
+		}
+	}
+	return false
+}
+
+func ping(host Node) error {
+	url := fmt.Sprintf("http://%s:%v%s", host.Ip, host.Port, pingUrl)
+	_, err := http.Get(url)
+	return err
 }

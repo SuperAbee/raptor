@@ -2,6 +2,7 @@ package dependence
 
 import (
 	"fmt"
+	"raptor/constants"
 	"raptor/proto"
 	"reflect"
 	"time"
@@ -58,8 +59,10 @@ func (dE *DeleyExecutor) AddOrRun(jobInstance proto.JobInstance) (bool, error) {
 func (dE *DeleyExecutor) executeTask(jobInstance *proto.JobInstance) {
 	switch reflect.DeepEqual(jobInstance.Config.Dependencies, proto.Dependency{}) {
 	case true:
+		jobInstance.Type = constants.SINGLE_JOB
 		go ExecuteSingleTask(jobInstance)
 	case false:
+		jobInstance.Type = constants.DEPENDENCE_JOB
 		go ExecuteDependenceTask(jobInstance)
 	}
 

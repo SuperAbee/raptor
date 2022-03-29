@@ -39,10 +39,13 @@ func New() ConfigCenter {
 type ConfigCenter interface {
 	Save(config Config) (bool, error)
 	Get(id string) (Config, error)
+	GetByGroup(id, group string) (Config, error)
+	GetByKV(kv map[string]string, group string) ([]Config, error)
 	OnChange(id string, handler func(config Config)) error
 }
 
 type Config struct {
 	ID      string `json:"id"`
+	Group   string `json:"group"`
 	Content string `json:"content"`
 }

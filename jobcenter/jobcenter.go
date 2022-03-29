@@ -7,7 +7,9 @@ import (
 	"raptor/eventcenter"
 	"raptor/proto"
 	"raptor/servicecenter"
+	"raptor/uuid"
 	"strings"
+	"time"
 )
 
 type JobRegistry interface {
@@ -25,6 +27,8 @@ type JobCenter struct {
 	ConfigCenter  configcenter.ConfigCenter
 	EventCenter   *eventcenter.EventCenter
 	RunningJobs   map[string]RunningJob
+	Ip            string
+	Port          uint64
 	State         string
 }
 
@@ -41,11 +45,15 @@ type Node struct {
 
 var jobCenter JobCenter
 
+var sf *uuid.SnowFlakeUUID
+
 func New() *JobCenter {
 	return &jobCenter
 }
 
 func init() {
+	sf, _ = uuid.NewSnowFlakeUUID((time.Now().Unix() % 1024) + 1)
+
 	//获取注册中心和配置中心
 	sc := servicecenter.New()
 
@@ -74,8 +82,16 @@ func init() {
 		ConfigCenter:  cc,
 		EventCenter:   es,
 		RunningJobs:   rj,
+		Ip:            ip,
+		Port:          1234,
 		State:         "running",
 	}
+
+	//监听任务状态
+	jobCenter.EventCenter.Subscribe("jobStart", onJobStart)
+	jobCenter.ConfigCenter.OnChange("jobChange", onJobChange)
+	jobCenter.EventCenter.Subscribe("jobFinished", onJobFinished)
+	jobCenter.EventCenter.Subscribe("jobTimeout", onJobTimeout)
 
 }
 
@@ -87,8 +103,4 @@ func GetOutBoundIP() (ip string, err error) {
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
 	ip = strings.Split(localAddr.String(), ":")[0]
 	return
-}
-
-func GenerateId() string {
-	return "123"
 }

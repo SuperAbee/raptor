@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"raptor/proto"
 	"raptor/servicecenter"
@@ -28,6 +29,22 @@ func GetHealthyHosts(config proto.Config) []servicecenter.Instance {
 	}
 
 	return healthyHosts
+}
+
+// GetRandomHosts 获取随机排列后的健康实例表
+func GetRandomHosts(list []servicecenter.Instance) []servicecenter.Instance {
+
+	//生成[0,size)随机序列randoms
+	size := len(list)
+	rand.Seed(time.Now().UnixNano())
+	randoms := rand.Perm(size)
+
+	res := make([]servicecenter.Instance, size)
+	for i := 0; i < size; i++ {
+		res[i] = list[randoms[i]]
+	}
+
+	return res
 }
 
 // GetHealthyHostsByName 获取当前访问服务的健康实例表

@@ -7,13 +7,14 @@ import (
 	"raptor/configcenter"
 	"raptor/proto"
 	"raptor/servicecenter"
+	"strconv"
 	"time"
 )
 
 func (j *JobCenter) Register(config proto.Config) error {
+	config.ID = strconv.FormatInt(sf.GenerateID(), 10)
 	//选取节点
 	Scheduler, err := j.ServiceCenter.GetService("scheduler")
-	log.Printf("scheduler: %+v\n", Scheduler)
 	if err != nil {
 		log.Println(err.Error())
 		return err
@@ -75,13 +76,13 @@ func (j *JobCenter) GetJobData(id string) (proto.Config, error) {
 	return config, nil
 }
 
-func selectHosts(service servicecenter.Service) map[int]servicecenter.Instance {
+func selectHosts(service servicecenter.Service) []servicecenter.Instance {
 	//根据不同策略选择不同的节点
 	return randomNodes(service)
 }
 
-func randomNodes(service servicecenter.Service) map[int]servicecenter.Instance {
-	nodes := make(map[int]servicecenter.Instance)
+func randomNodes(service servicecenter.Service) []servicecenter.Instance {
+	nodes := make([]servicecenter.Instance, 3)
 	hosts := service.Hosts
 	if len(hosts) <= 3 {
 		for i, host := range hosts {

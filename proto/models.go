@@ -11,19 +11,30 @@ type Config struct {
 	Dependencies     Dependency       // 任务依赖
 	RetryStrategy    RetryStrategy    // 失败处理策略
 	ShardingStrategy ShardingStrategy // 分片策略
-	ShardingResults  []Sharding       // 静态分片结果
 	PreFilter        []string         // 前置过滤器
 	PostFilter       []string         // 后置过滤器
 	Executor         string           // 执行器
 }
 
-//用于执行的任务实例
+// ShardingResult 静态分片结果
+type ShardingResult struct {
+	ConfigID        string `json:"configID"`
+	ShardingContent string `json:"shardingContent"`
+}
+
+// JobInstance 用于执行的任务实例
 type JobInstance struct {
 	Config       Config
 	ExecuteTime  int64
+	StartTime    int64
+	EndTime      int64
 	ID           string
+	PreId        string
+	Type         string
 	IsMaster     bool
 	ExecuteCount int
+	Status       string
+	Extra        map[string]interface{}
 }
 type Task struct {
 	Type   string            // 任务类型
@@ -36,8 +47,15 @@ type Trigger struct {
 }
 
 type Dependency struct {
-	Nodes map[string]string //涉及的所有任务id
-	Links []Edge            //任务依赖关系
+	Nodes map[string]NodeInfo //涉及的所有任务id
+	Links []Edge              //任务依赖关系
+}
+
+type NodeInfo struct {
+	NodeName   string
+	JobId      string
+	InstanceID string
+	Status     string
 }
 
 type NodeEntity struct {
@@ -57,7 +75,6 @@ type ShardingStrategy struct {
 	ShardingType  string // 分片类型：静态/动态
 	ShardingCount int    // 分片数量
 	DefaultCount  int    // 默认执行器数量
-	ActuallyCount int    // 实际执行器数量
 	ParameterRole string // 分片规则 0=A，1=B
 }
 

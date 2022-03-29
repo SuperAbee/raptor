@@ -8,14 +8,16 @@ import (
 var Filters = make(map[string]Filter)
 
 type Filter interface {
-	Filter(instance proto.JobInstance) error
+	Filter(instance *proto.JobInstance) error
 }
 
 func NewChain(instance proto.JobInstance) *Chain {
-	chain := &Chain{instance: instance}
+	chain := &Chain{instance: &instance}
 	for _, f := range instance.Config.PreFilter {
 		chain.withPreFilter(f)
 	}
+	chain.withPreFilter(MetricsPreFilterKey)
+	chain.withPostFilter(MetricsPostFilterKey)
 	for _, f := range instance.Config.PostFilter {
 		chain.withPreFilter(f)
 	}
@@ -27,7 +29,7 @@ type Chain struct {
 	preFilter []Filter
 	postFilter []Filter
 	executor executor.Executor
-	instance proto.JobInstance
+	instance *proto.JobInstance
 }
 
 func (c *Chain) Do() error {
@@ -37,7 +39,7 @@ func (c *Chain) Do() error {
 		}
 	}
 
-	if err := c.executor.Execute(c.instance); err != nil {
+	if err := c.executor.Execute(*c.instance); err != nil {
 		return err
 	}
 

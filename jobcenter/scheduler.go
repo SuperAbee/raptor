@@ -9,6 +9,7 @@ import (
 	"raptor/dependence"
 	"raptor/eventcenter"
 	"raptor/proto"
+	"strconv"
 	"time"
 
 	"github.com/gorhill/cronexpr"
@@ -52,11 +53,6 @@ func (j *JobCenter) TimingJob(isMaster bool, jobID string) error {
 	}
 	deleyExecutor.AddOrRun(instance)
 
-	//监听任务状态
-	j.EventCenter.Subscribe(instance.ID+"-start", onJobStart)
-	j.ConfigCenter.OnChange(jobID, onJobChange)
-	j.EventCenter.Subscribe(instance.ID+"-finished", onJobFinished)
-
 	return nil
 }
 
@@ -64,7 +60,7 @@ func generateJobInstance(config proto.Config, isMaster bool) proto.JobInstance {
 	//解析cron表达式
 	time := getNextTime(config.Cron)
 	//随机生成ID
-	ID := GenerateId()
+	ID := strconv.FormatInt(sf.GenerateID(), 10)
 
 	instance := proto.JobInstance{
 		Config:       config,
@@ -103,15 +99,15 @@ func onJobFinished(event *eventcenter.Event) {
 	isSuccess := event.Header["isSuccess"]
 	instance := event.Body.(proto.JobInstance)
 
-	//执行操作及输出成功信息
-	if isSuccess == "true" {
-		notifyJobResult(instance, "success")
-		log.Println(instance.ID + " success")
-	} else {
-
-		//执行失败进行失效转移处理
-		onJobFailed(instance)
+	//记录结果信息到nacos
+	if instance.IsMaster {
+		if isSuccess == "true" {
+			log.Println(instance.ID + " success")
+		} else {
+			log.Println(instance.ID + " success")
+		}
 	}
+
 }
 
 func notifyJobResult(instance proto.JobInstance, result string) {
@@ -123,7 +119,7 @@ func notifyJobResult(instance proto.JobInstance, result string) {
 	json.Unmarshal([]byte(content.Content), &runningJob)
 	for _, host := range runningJob.Hosts {
 		if !host.IsMaster {
-			url := fmt.Sprintf("%s:%v%s?id=%s&state=%s", host.Ip, host.Port, jobStateUrl, instance.ID, result)
+			url := fmt.Sprintf("http://%s:%v%s?id=%s&state=%s", host.Ip, host.Port, jobStateUrl, instance.ID, result)
 			http.Get(url)
 		}
 	}
