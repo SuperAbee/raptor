@@ -16,20 +16,10 @@ import (
 )
 
 const (
-	pingUrl     = "/scheduler/ping"
-	timingUrl   = "/scheduler/timing"
-	jobStateUrl = "/scheduler/state"
+	pingUrl   = "/scheduler/ping"
+	timingUrl = "/scheduler/timing"
+	notifyUrl = "/scheduler/notify"
 )
-
-func (j *JobCenter) AssignJob(runningJob *RunningJob) error {
-	//通知对应节点负责任务
-	for _, host := range runningJob.Hosts {
-		url := fmt.Sprintf("http://%s:%v%s?isMaster=%v&id=%s", host.Ip, host.Port, timingUrl, host.IsMaster, runningJob.Config.ID)
-		http.Get(url)
-	}
-
-	return nil
-}
 
 func (j *JobCenter) TimingJob(isMaster bool, jobID string) error {
 	content, err := j.ConfigCenter.Get(jobID)
@@ -45,6 +35,10 @@ func (j *JobCenter) TimingJob(isMaster bool, jobID string) error {
 	}
 	j.RunningJobs[jobID] = runningJob
 	instance := generateJobInstance(runningJob.Config, isMaster)
+	log.Printf("receieve job ID:%v name:%v isMaster:%v", jobID, runningJob.Config.Name, isMaster)
+
+	//监听任务配置改变
+	j.ConfigCenter.OnChange(jobID, onJobChange)
 
 	//执行任务
 	deleyExecutor, err := dependence.NewDeleyExecutor()
@@ -69,15 +63,32 @@ func generateJobInstance(config proto.Config, isMaster bool) proto.JobInstance {
 		IsMaster:     isMaster,
 		ExecuteCount: 1,
 	}
+
+	log.Printf("generate new instance ID:%v jobID:%v", ID, config.ID)
 	return instance
 }
 
 func onJobStart(event *eventcenter.Event) {
 	jobCenter := New()
 	instance := event.Body.(proto.JobInstance)
+
 	//计算下一次任务实例
 	//todo master重新上线的情况, 线程安全问题
-	newInstance := generateJobInstance(jobCenter.RunningJobs[instance.ID].Config, instance.IsMaster)
+	newInstance := generateJobInstance(jobCenter.RunningJobs[instance.Config.ID].Config, instance.IsMaster)
+
+	if instance.IsMaster {
+		//检查从服务器状态并及时替换
+		hosts := jobCenter.RunningJobs[instance.Config.ID].Hosts
+		for i := 0; i < len(hosts); i++ {
+			if _, ok := jobCenter.Schedulers.Load(hosts[i]); !ok {
+				hosts = append(hosts[:i], hosts[i+1:]...)
+			}
+		}
+		fillUpNodes(hosts, 3, instance.Config.ID)
+
+		//通知从节点任务状态
+		notifyJob(instance, "running")
+	}
 
 	//执行任务
 	deleyExecutor, err := dependence.NewDeleyExecutor()
@@ -96,12 +107,12 @@ func onJobChange(config configcenter.Config) {
 }
 
 func onJobFinished(event *eventcenter.Event) {
-	isSuccess := event.Header["isSuccess"]
+	state := event.Header["status"]
 	instance := event.Body.(proto.JobInstance)
 
 	//记录结果信息到nacos
 	if instance.IsMaster {
-		if isSuccess == "true" {
+		if state == "completed" {
 			log.Println(instance.ID + " success")
 		} else {
 			log.Println(instance.ID + " success")
@@ -110,16 +121,16 @@ func onJobFinished(event *eventcenter.Event) {
 
 }
 
-func notifyJobResult(instance proto.JobInstance, result string) {
+func notifyJob(instance proto.JobInstance, result string) {
 	//通知从节点任务结果
 	cc := jobCenter.ConfigCenter
 	content, _ := cc.Get(instance.Config.ID)
 
 	var runningJob RunningJob
 	json.Unmarshal([]byte(content.Content), &runningJob)
-	for _, host := range runningJob.Hosts {
+	for _, host := range runningJob.Hosts[1:] {
 		if !host.IsMaster {
-			url := fmt.Sprintf("http://%s:%v%s?id=%s&state=%s", host.Ip, host.Port, jobStateUrl, instance.ID, result)
+			url := fmt.Sprintf("http://%s:%v%s?id=%s&state=%s", host.Ip, host.Port, notifyUrl, instance.ID, result)
 			http.Get(url)
 		}
 	}

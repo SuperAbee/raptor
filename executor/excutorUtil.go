@@ -15,19 +15,14 @@ import (
 
 // GetHealthyHosts 获取当前访问服务的健康实例表
 func GetHealthyHosts(config proto.Config) []servicecenter.Instance {
-
 	service, _ := sc.GetService(config.TargetService)
-
 	hosts := service.Hosts
-
 	var healthyHosts []servicecenter.Instance
-
 	for _, instance := range hosts {
 		if instance.Healthy == true {
 			healthyHosts = append(healthyHosts, instance)
 		}
 	}
-
 	return healthyHosts
 }
 
@@ -45,6 +40,17 @@ func GetRandomHosts(list []servicecenter.Instance) []servicecenter.Instance {
 	}
 
 	return res
+}
+
+func GetRandomHostsByShuffle(list []servicecenter.Instance) []servicecenter.Instance {
+	for i := len(list) - 1; i > 0; i-- {
+		rand.Seed(time.Now().UnixNano())
+		k := rand.Intn(i + 1)
+		e := list[k]
+		list[k] = list[i]
+		list[i] = e
+	}
+	return list
 }
 
 // GetHealthyHostsByName 获取当前访问服务的健康实例表

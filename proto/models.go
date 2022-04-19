@@ -4,22 +4,18 @@ package proto
 type Config struct {
 	ID               string           // 唯一标识，后台自动生成
 	Name             string           // 配置名
+	Description      string           // 任务描述
 	TargetService    string           // 被调服务
 	Cron             string           // 执行时间
-	Task             Task             // 任务
+	Task             Task             // 任务请求
 	Trigger          Trigger          // 触发条件
 	Dependencies     Dependency       // 任务依赖
 	RetryStrategy    RetryStrategy    // 失败处理策略
+	RetryCount       int              // 重试次数
 	ShardingStrategy ShardingStrategy // 分片策略
 	PreFilter        []string         // 前置过滤器
 	PostFilter       []string         // 后置过滤器
 	Executor         string           // 执行器
-}
-
-// ShardingResult 静态分片结果
-type ShardingResult struct {
-	ConfigID        string `json:"configID"`
-	ShardingContent string `json:"shardingContent"`
 }
 
 // JobInstance 用于执行的任务实例
@@ -37,10 +33,10 @@ type JobInstance struct {
 	Extra        map[string]interface{}
 }
 type Task struct {
-	Type   string            // 任务类型
+	Type   string            // 请求类型
 	URI    string            // URI
-	Body   string            // 任务体
-	Header map[string]string // 任务头
+	Body   string            // 请求体
+	Header map[string]string // 请求头
 }
 
 type Trigger struct {

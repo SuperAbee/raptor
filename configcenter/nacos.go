@@ -1,9 +1,13 @@
 package configcenter
 
 import (
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/tidwall/gjson"
 	"log"
 	"raptor/constants"
+	"raptor/monitor"
+	"strings"
+	"time"
 
 	"github.com/nacos-group/nacos-sdk-go/clients"
 	"github.com/nacos-group/nacos-sdk-go/clients/config_client"
@@ -54,7 +58,20 @@ type nacosConfigCenter struct {
 }
 
 func (n *nacosConfigCenter) GetByGroup(id, group string) (Config, error) {
+	start := time.Now()
+	defer func() {
+		monitor.ConfigCenterDurationHistogram.
+			With(prometheus.Labels{"group": group}).Observe(float64(time.Now().Sub(start)))
+		monitor.ConfigCenterDurationSummary.
+			With(prometheus.Labels{"group": group}).Observe(float64(time.Now().Sub(start)))
+	}()
+	monitor.ConfigCenterQuery.With(prometheus.Labels{"group": group}).Inc()
 	if r, err := n.cache.GetByGroup(id, group); err == nil && r.ID == id {
+		monitor.ConfigCenterCacheHit.With(prometheus.Labels{"group": group}).Inc()
+		monitor.ConfigCenterContentLengthHistogram.
+			With(prometheus.Labels{"group": group}).Observe(float64(len(r.Content)))
+		monitor.ConfigCenterContentLengthSummary.
+			With(prometheus.Labels{"group": group}).Observe(float64(len(r.Content)))
 		return r, nil
 	}
 	if group == "" {
@@ -70,6 +87,11 @@ func (n *nacosConfigCenter) GetByGroup(id, group string) (Config, error) {
 		return Config{}, nil
 	}
 
+	monitor.ConfigCenterContentLengthHistogram.
+		With(prometheus.Labels{"group": group}).Observe(float64(len(content)))
+	monitor.ConfigCenterContentLengthSummary.
+		With(prometheus.Labels{"group": group}).Observe(float64(len(content)))
+
 	return Config{
 		ID:      id,
 		Group: group,
@@ -77,8 +99,23 @@ func (n *nacosConfigCenter) GetByGroup(id, group string) (Config, error) {
 	}, nil
 }
 
-func (n *nacosConfigCenter) GetByKV(kv map[string]string, group string) ([]Config, error) {
+func (n *nacosConfigCenter) GetByKV(kv map[string]Search, group string) ([]Config, error) {
+	start := time.Now()
+	defer func() {
+		monitor.ConfigCenterDurationHistogram.
+			With(prometheus.Labels{"group": group}).Observe(float64(time.Now().Sub(start)))
+		monitor.ConfigCenterDurationSummary.
+			With(prometheus.Labels{"group": group}).Observe(float64(time.Now().Sub(start)))
+	}()
+	monitor.ConfigCenterQuery.With(prometheus.Labels{"group": group}).Inc()
 	if r, err := n.cache.GetByKV(kv, group); err == nil && len(r) != 0 {
+		monitor.ConfigCenterCacheHit.With(prometheus.Labels{"group": group}).Inc()
+		for _, t := range r {
+			monitor.ConfigCenterContentLengthHistogram.
+				With(prometheus.Labels{"group": group}).Observe(float64(len(t.Content)))
+			monitor.ConfigCenterContentLengthSummary.
+				With(prometheus.Labels{"group": group}).Observe(float64(len(t.Content)))
+		}
 		return r, nil
 	}
 	var ret []Config
@@ -113,9 +150,16 @@ func (n *nacosConfigCenter) GetByKV(kv map[string]string, group string) ([]Confi
 			match := true
 			for k, v := range kv {
 				s := cc.Content
-				if gjson.Get(s, k).String() != v {
-					match = false
-					break
+				if v.Exact {
+					if gjson.Get(s, k).String() != v.Keyword {
+						match = false
+						break
+					}
+				} else {
+					if !strings.Contains(v.Keyword, gjson.Get(s, k).String()) {
+						match = false
+						break
+					}
 				}
 			}
 			if match {
@@ -125,6 +169,13 @@ func (n *nacosConfigCenter) GetByKV(kv map[string]string, group string) ([]Confi
 				})
 			}
 		}
+	}
+
+	for _, t1 := range ret {
+		monitor.ConfigCenterContentLengthHistogram.
+			With(prometheus.Labels{"group": group}).Observe(float64(len(t1.Content)))
+		monitor.ConfigCenterContentLengthSummary.
+			With(prometheus.Labels{"group": group}).Observe(float64(len(t1.Content)))
 	}
 
 	return ret, nil
@@ -146,7 +197,20 @@ func (n *nacosConfigCenter) Save(config Config) (bool, error) {
 }
 
 func (n *nacosConfigCenter) Get(id string) (Config, error) {
+	start := time.Now()
+	defer func() {
+		monitor.ConfigCenterDurationHistogram.
+			With(prometheus.Labels{"group": constants.NACOS_GROUP}).Observe(float64(time.Now().Sub(start)))
+		monitor.ConfigCenterDurationSummary.
+			With(prometheus.Labels{"group": constants.NACOS_GROUP}).Observe(float64(time.Now().Sub(start)))
+	}()
+	monitor.ConfigCenterQuery.With(prometheus.Labels{"group": constants.NACOS_GROUP}).Inc()
 	if r, err := n.cache.Get(id); err == nil && r.ID == id {
+		monitor.ConfigCenterCacheHit.With(prometheus.Labels{"group": constants.NACOS_GROUP}).Inc()
+		monitor.ConfigCenterContentLengthHistogram.
+			With(prometheus.Labels{"group": constants.NACOS_GROUP}).Observe(float64(len(r.Content)))
+		monitor.ConfigCenterContentLengthSummary.
+			With(prometheus.Labels{"group": constants.NACOS_GROUP}).Observe(float64(len(r.Content)))
 		return r, nil
 	}
 	content, err := n.configClient.GetConfig(vo.ConfigParam{
@@ -157,6 +221,11 @@ func (n *nacosConfigCenter) Get(id string) (Config, error) {
 	if err != nil {
 		return Config{}, nil
 	}
+
+	monitor.ConfigCenterContentLengthHistogram.
+		With(prometheus.Labels{"group": constants.NACOS_GROUP}).Observe(float64(len(content)))
+	monitor.ConfigCenterContentLengthSummary.
+		With(prometheus.Labels{"group": constants.NACOS_GROUP}).Observe(float64(len(content)))
 
 	return Config{
 		ID:      id,

@@ -2,14 +2,41 @@ package jobcenter
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"math/rand"
+	"net/http"
 	"raptor/configcenter"
+	"raptor/constants"
 	"raptor/proto"
 	"raptor/servicecenter"
 	"strconv"
 	"time"
 )
+
+func (j *JobCenter) SaveJob(config proto.Config) error {
+	if config.ID == "" {
+		config.ID = strconv.FormatInt(sf.GenerateID(), 10)
+	}
+
+	contentJson, _ := json.Marshal(config)
+	_, err := j.ConfigCenter.Save(configcenter.Config{
+		ID:      config.ID,
+		Content: string(contentJson),
+	})
+	if err != nil {
+		log.Println(err.Error())
+		return err
+	}
+	log.Printf("save job ID:%v name:%v\n", config.ID, config.Name)
+
+	j.ConfigCenter.Save(configcenter.Config{
+		ID:      config.ID,
+		Group:   constants.JOB_GROUP,
+		Content: string(contentJson),
+	})
+	return nil
+}
 
 func (j *JobCenter) Register(config proto.Config) error {
 	config.ID = strconv.FormatInt(sf.GenerateID(), 10)
@@ -36,25 +63,34 @@ func (j *JobCenter) Register(config proto.Config) error {
 	}
 
 	//任务注册到注册中心
-	runningjob := RunningJob{
+	runningJob := RunningJob{
 		Config: config,
 		Hosts:  nodes,
 	}
 
-	contentJson, _ := json.Marshal(runningjob)
+	contentJson, _ := json.Marshal(runningJob)
 	_, err = j.ConfigCenter.Save(configcenter.Config{
 		ID:      config.ID,
 		Content: string(contentJson),
 	})
 	if err != nil {
+		log.Println(err.Error())
 		return err
 	}
-	log.Print("register Job:", config.Name)
+	log.Printf("register job ID:%v name:%v\n", config.ID, config.Name)
 
 	//将任务分配给对应节点
-	j.AssignJob(&runningjob)
+	j.AssignJob(&runningJob)
 
 	return nil
+}
+
+func (j *JobCenter) AssignJob(runningJob *RunningJob) {
+	//通知对应节点负责任务
+	for _, host := range runningJob.Hosts {
+		url := fmt.Sprintf("http://%s:%v%s?isMaster=%v&id=%s", host.Ip, host.Port, timingUrl, host.IsMaster, runningJob.Config.ID)
+		http.Get(url)
+	}
 }
 
 func (j *JobCenter) Unregister(jobName string) (bool, error) {
@@ -85,10 +121,7 @@ func randomNodes(service servicecenter.Service) []servicecenter.Instance {
 	nodes := make([]servicecenter.Instance, 3)
 	hosts := service.Hosts
 	if len(hosts) <= 3 {
-		for i, host := range hosts {
-			nodes[i] = host
-		}
-		return nodes
+		return hosts
 	}
 
 	for i, num := range generateRandomNumber(0, len(hosts), 3) {

@@ -3,14 +3,16 @@ package dependence
 import (
 	"fmt"
 	"raptor/constants"
+	"raptor/eventcenter"
 	"raptor/proto"
 	"reflect"
 	"time"
 )
 
 type DeleyExecutor struct {
-	tw       *TimeWheel
-	skipList *SkipList
+	tw            *TimeWheel
+	skipList      *SkipList
+	slaveInstance map[string]proto.JobInstance
 }
 
 func NewDeleyExecutor() (*DeleyExecutor, error) {
@@ -22,6 +24,7 @@ func NewDeleyExecutor() (*DeleyExecutor, error) {
 	return &DeleyExecutor{
 		tw:       timeWheel,
 		skipList: NewSkipList(),
+		slaveInstance: make(map[string]proto.JobInstance),
 	}, nil
 }
 
@@ -36,12 +39,23 @@ func (dE *DeleyExecutor) Init() {
 }
 
 func (dE *DeleyExecutor) AddOrRun(jobInstance proto.JobInstance) (bool, error) {
+	if !jobInstance.IsMaster {
+		dE.slaveInstance[jobInstance.ID] = jobInstance
+		jobInstance.ExecuteTime += 5
+	}
 	duration := jobInstance.ExecuteTime - time.Now().Unix()
+	if duration <= 0 && !jobInstance.IsMaster {
+		duration = 5
+	}
 	if duration <= 0 {
 		dE.executeTask(&jobInstance)
 		return true, nil
 	} else if duration <= 30 {
 		fmt.Printf("将任务 %s 加入时间轮\n", jobInstance.ID)
+		if !jobInstance.IsMaster {
+			dE.slaveInstance[jobInstance.ID] = jobInstance
+			jobInstance.ExecuteTime += 5
+		}
 		dE.tw.Add(time.Duration(duration)*time.Second, func() {
 			dE.executeTask(&jobInstance)
 		})
@@ -56,7 +70,19 @@ func (dE *DeleyExecutor) AddOrRun(jobInstance proto.JobInstance) (bool, error) {
 	}
 }
 
+func (dE *DeleyExecutor) ChangeSalveInstance(instanceID string) {
+	delete(dE.slaveInstance, instanceID)
+}
+
 func (dE *DeleyExecutor) executeTask(jobInstance *proto.JobInstance) {
+	if !jobInstance.IsMaster {
+		_, ok := dE.slaveInstance[jobInstance.ID]
+		if !ok {
+			event := eventcenter.NewEvent().WithBody(jobInstance)
+			eventCenter.Publish("job timeout", event)
+			return
+		}
+	}
 	switch reflect.DeepEqual(jobInstance.Config.Dependencies, proto.Dependency{}) {
 	case true:
 		jobInstance.Type = constants.SINGLE_JOB

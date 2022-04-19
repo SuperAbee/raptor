@@ -33,7 +33,15 @@ func TestGetByKV(t *testing.T) {
 		Content: "{\"hello\": {\"world\": \"!\", \"me\": \"1\"}}",
 	})
 
-	c, _ := mc.GetByKV(map[string]string{"hello.world": "!", "hello.me": "1"}, "")
+	c, _ := mc.GetByKV(map[string]Search{
+		"hello.world": {
+			Keyword: "!",
+			Exact:   true,
+		}, "hello.me": {
+			Keyword: "!",
+			Exact:   true,
+		},
+	}, "")
 
 	fmt.Println(c)
 }

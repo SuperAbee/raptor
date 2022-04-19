@@ -34,21 +34,15 @@ type Executor interface {
 type HttpExecutor struct {
 }
 
-var chMsg = make(chan ShardingRequest, 10)
+var chMsg = make(chan ShardingRequest, 50)
 
 // ShardingRequest 分片完成返回的http请求结果
 type ShardingRequest struct {
-	Id             string            // 任务id
+	JobInstance    proto.JobInstance // 任务
 	ShardingCount  int               // 分片总数
 	ShardingItem   int               // 分片序号
 	ShardingStatus int               // 分片执行结果
-	RetryCount     int               // 失败重试总数
-	TargetService  string            // 被调服务
-	Type           string            // GET/POST
 	Url            string            // 请求的url
-	Body           string            // 任务体
-	Header         map[string]string // 任务头
-	ConfigId       string            // configId
 }
 
 // TaskRequest 任务完成情况
@@ -68,8 +62,8 @@ var reShardings = make(map[string]bool)
 func getMsg() {
 	for {
 		ch := <-chMsg
-		log.Println("JobId:", ch.Id, ",分片号：", ch.ShardingItem, ",结果:", ch.ShardingStatus)
-		taskRequest, ok := taskResults[ch.Id] /*如果确定是真实的,则存在,否则不存在 */
+		log.Println("JobId:", ch.JobInstance.ID, ",分片号：", ch.ShardingItem, ",结果:", ch.ShardingStatus)
+		taskRequest, ok := taskResults[ch.JobInstance.ID] /*如果确定是真实的,则存在,否则不存在 */
 
 		if ok {
 			//分片请求成功
@@ -86,18 +80,18 @@ func getMsg() {
 							break
 						}
 					}
-					e := eventcenter.NewEvent().WithHeader("jobID", ch.Id).WithHeader("configID", ch.ConfigId).WithHeader("status", status)
-					es.Publish("jobComplete", e)
+					e := eventcenter.NewEvent().WithBody(ch.JobInstance).WithHeader("status", status)
+					es.Publish("job complete", e)
 
-					log.Println("JobId:", ch.Id, "执行结果:", shardingStatus[0:])
-					delete(taskResults, ch.Id)
+					log.Println("JobId:", ch.JobInstance.ID, "执行结果:", shardingStatus[0:])
+					delete(taskResults, ch.JobInstance.ID)
 
 					if taskRequest.RetryNowCount > 0 {
-						log.Println("ConfigId:", ch.ConfigId, "标记重新分片！")
-						reShardings[ch.ConfigId] = true
+						log.Println("ConfigId:", ch.JobInstance.Config.ID, "标记重新分片！")
+						reShardings[ch.JobInstance.Config.ID] = true
 					}
 				} else {
-					taskResults[ch.Id] = TaskRequest{
+					taskResults[ch.JobInstance.ID] = TaskRequest{
 						nowCount,
 						shardingStatus,
 						taskRequest.RetryNowCount,
@@ -109,23 +103,23 @@ func getMsg() {
 				shardingStatus[ch.ShardingItem] = ch.ShardingStatus
 				nowRetry := taskRequest.RetryNowCount
 
-				if nowRetry >= ch.RetryCount { //重试次数用完仍失败
+				if nowRetry >= ch.JobInstance.ExecuteCount { //重试次数用完仍失败
 					nowCount++
 					if nowCount == len(shardingStatus) {
 						//回调wyf的函数，告知任务执行结果
 						status := constants.TASK_FAIL
-						e := eventcenter.NewEvent().WithHeader("jobID", ch.Id).WithHeader("configID", ch.ConfigId).WithHeader("status", status)
-						es.Publish("jobComplete", e)
+						e := eventcenter.NewEvent().WithBody(ch.JobInstance).WithHeader("status", status)
+						es.Publish("job complete", e)
 
-						log.Println("Id:", ch.Id, "执行结果:", shardingStatus[0:])
-						delete(taskResults, ch.Id)
+						log.Println("Id:", ch.JobInstance.ID, "执行结果:", shardingStatus[0:])
+						delete(taskResults, ch.JobInstance.ID)
 
 						if taskRequest.RetryNowCount > 0 {
-							log.Println("ConfigId:", ch.ConfigId, "标记重新分片！")
-							reShardings[ch.ConfigId] = true
+							log.Println("ConfigId:", ch.JobInstance.Config.ID, "标记重新分片！")
+							reShardings[ch.JobInstance.Config.ID] = true
 						}
 					} else {
-						taskResults[ch.Id] = TaskRequest{
+						taskResults[ch.JobInstance.ID] = TaskRequest{
 							nowCount,
 							shardingStatus,
 							nowRetry,
@@ -134,13 +128,13 @@ func getMsg() {
 				} else { //执行分片失败重试
 					nowRetry++
 
-					taskResults[ch.Id] = TaskRequest{
+					taskResults[ch.JobInstance.ID] = TaskRequest{
 						nowCount,
 						shardingStatus,
 						nowRetry,
 					}
 
-					healthyHosts := GetHealthyHostsByName(ch.TargetService)
+					healthyHosts := GetHealthyHostsByName(ch.JobInstance.Config.TargetService)
 					//随机一个实例用于分片重试
 					rand.Seed(time.Now().UnixNano())
 					k := rand.Intn(len(healthyHosts))
@@ -156,12 +150,12 @@ func getMsg() {
 				if nowCount == len(shardingStatus) {
 					//回调wyf的函数，告知任务执行结果
 					status := constants.TASK_COMPLETED
-					e := eventcenter.NewEvent().WithHeader("jobID", ch.Id).WithHeader("configID", ch.ConfigId).WithHeader("status", status)
-					es.Publish("jobComplete", e)
+					e := eventcenter.NewEvent().WithBody(ch.JobInstance).WithHeader("status", status)
+					es.Publish("job complete", e)
 
-					log.Println("JobId:", ch.Id, "执行结果:", shardingStatus[0:])
+					log.Println("JobId:", ch.JobInstance.ID, "执行结果:", shardingStatus[0:])
 				} else {
-					taskResults[ch.Id] = TaskRequest{
+					taskResults[ch.JobInstance.ID] = TaskRequest{
 						nowCount,
 						shardingStatus,
 						0,
@@ -173,21 +167,21 @@ func getMsg() {
 				shardingStatus[ch.ShardingItem] = ch.ShardingStatus
 				nowRetry := 0
 
-				if nowRetry >= ch.RetryCount { //重试次数用完仍失败
+				if nowRetry >= ch.JobInstance.ExecuteCount { //重试次数用完仍失败
 					nowCount++
 					if nowCount == len(shardingStatus) {
 						//回调wyf的函数，告知任务执行结果
 						status := constants.TASK_FAIL
-						e := eventcenter.NewEvent().WithHeader("jobID", ch.Id).WithHeader("configID", ch.ConfigId).WithHeader("status", status)
-						es.Publish("jobComplete", e)
+						e := eventcenter.NewEvent().WithBody(ch.JobInstance).WithHeader("status", status)
+						es.Publish("job complete", e)
 
-						log.Println("JobId:", ch.Id, "执行结果:", shardingStatus[0:])
+						log.Println("JobId:", ch.JobInstance.ID, "执行结果:", shardingStatus[0:])
 
-						log.Println("ConfigId:", ch.ConfigId, "标记重新分片！")
-						reShardings[ch.ConfigId] = true
+						log.Println("ConfigId:", ch.JobInstance.Config.ID, "标记重新分片！")
+						reShardings[ch.JobInstance.Config.ID] = true
 
 					} else {
-						taskResults[ch.Id] = TaskRequest{
+						taskResults[ch.JobInstance.ID] = TaskRequest{
 							nowCount,
 							shardingStatus,
 							nowRetry,
@@ -196,13 +190,13 @@ func getMsg() {
 				} else { //执行分片失败重试
 					nowRetry++
 
-					taskResults[ch.Id] = TaskRequest{
+					taskResults[ch.JobInstance.ID] = TaskRequest{
 						nowCount,
 						shardingStatus,
 						nowRetry,
 					}
 
-					healthyHosts := GetHealthyHostsByName(ch.TargetService)
+					healthyHosts := GetHealthyHostsByName(ch.JobInstance.Config.TargetService)
 					//随机一个实例用于分片重试
 					rand.Seed(time.Now().UnixNano())
 					k := rand.Intn(len(healthyHosts))
@@ -215,9 +209,9 @@ func getMsg() {
 
 func DoShardingRetry(request ShardingRequest, ip string, port uint64) {
 	url := GetUrl(ip, port, request.Url, "")
-	if request.Type == "GET" {
+	if request.JobInstance.Config.Task.Type == "GET" {
 		go func() {
-			log.Printf("JobId:%v,Retry GET:%v \n", request.Id, url)
+			log.Printf("JobId:%v,Retry GET:%v \n", request.JobInstance.ID, url)
 			status, _ := Get(url)
 
 			request.ShardingStatus = status
@@ -226,8 +220,8 @@ func DoShardingRetry(request ShardingRequest, ip string, port uint64) {
 		}()
 	} else {
 		go func() {
-			log.Printf("JobId:%v,Retry POST:%v \n", request.Id, url)
-			status, _ := Post(url, request.Body, request.Header, "application/json")
+			log.Printf("JobId:%v,Retry POST:%v \n", request.JobInstance.ID, url)
+			status, _ := Post(url, request.JobInstance.Config.Task.Body, request.JobInstance.Config.Task.Header, "application/json")
 
 			request.ShardingStatus = status
 
@@ -241,30 +235,25 @@ func (h *HttpExecutor) Execute(jobInstance proto.JobInstance) error {
 	log.Printf("JobId:%v start\n", jobInstance.ID)
 
 	config := jobInstance.Config
-	//healthyHosts := [1]servicecenter.Instance{
-	//	{
-	//		"127.0.0.1",
-	//		1234,
-	//		true}}
-
-	//获取健康实例列表
-	healthyHosts := GetHealthyHosts(config)
-	log.Printf("targetService:%v,Instances:%v \n", config.TargetService, healthyHosts)
-	//对健康实例随机排序
-	healthyHosts = GetRandomHosts(healthyHosts)
-	log.Printf("targetService:%v,RandomInstances:%v \n", config.TargetService, healthyHosts)
-
-	healthyNum := len(healthyHosts)
-	//当前无健康服务
-	if healthyNum < 1 {
-		log.Printf("JobId:%vfail! no avaliable service\n", jobInstance.ID)
-		return fmt.Errorf("no avaliable service")
-	}
 
 	//该任务不分片,直接执行
 	if reflect.DeepEqual(config.ShardingStrategy, proto.ShardingStrategy{}) {
 
-		url := GetUrl(healthyHosts[0].Ip, healthyHosts[0].Port, config.Task.URI, "")
+		//获取健康实例列表
+		healthyHosts := GetHealthyHosts(config)
+		log.Printf("targetService:%v,Instances:%v \n", config.TargetService, healthyHosts)
+
+		healthyNum := len(healthyHosts)
+		//当前无健康服务
+		if healthyNum < 1 {
+			log.Printf("JobId:%vfail! no avaliable service\n", jobInstance.ID)
+			return fmt.Errorf("no avaliable service")
+		}
+
+		rand.Seed(time.Now().UnixNano())
+		randomI := rand.Intn(healthyNum)
+
+		url := GetUrl(healthyHosts[randomI].Ip, healthyHosts[randomI].Port, config.Task.URI, "")
 		halfUrl := GetHalfUrl(config.Task.URI, "")
 
 		if config.Task.Type == "GET" {
@@ -272,17 +261,11 @@ func (h *HttpExecutor) Execute(jobInstance proto.JobInstance) error {
 				log.Printf("JobId:%v,GET:%v \n", jobInstance.ID, url)
 				status, _ := Get(url)
 				shardingRequest := ShardingRequest{
-					jobInstance.ID,
+					jobInstance,
 					1,
 					0,
 					status,
-					jobInstance.ExecuteCount,
-					config.TargetService,
-					"GET",
 					halfUrl,
-					config.Task.Body,
-					config.Task.Header,
-					config.ID,
 				}
 				chMsg <- shardingRequest
 			}()
@@ -291,27 +274,36 @@ func (h *HttpExecutor) Execute(jobInstance proto.JobInstance) error {
 				log.Printf("JobId:%v,POST:%v \n", jobInstance.ID, url)
 				status, _ := Post(url, config.Task.Body, config.Task.Header, "application/json")
 				shardingRequest := ShardingRequest{
-					jobInstance.ID,
+					jobInstance,
 					1,
 					0,
 					status,
-					jobInstance.ExecuteCount,
-					config.TargetService,
-					"POST",
 					halfUrl,
-					config.Task.Body,
-					config.Task.Header,
-					config.ID,
 				}
 				chMsg <- shardingRequest
 			}()
 			//Post(url, config.Task.Body, config.Task.Header, "application/json")
 		}
 	} else {
+		//获取健康实例列表
+		healthyHosts := GetHealthyHosts(config)
+		log.Printf("targetService:%v,Instances:%v \n", config.TargetService, healthyHosts)
+		//对健康实例随机排序
+		healthyHosts = GetRandomHosts(healthyHosts)
+		log.Printf("targetService:%v,RandomInstances:%v \n", config.TargetService, healthyHosts)
+
+		healthyNum := len(healthyHosts)
+		//当前无健康服务
+		if healthyNum < 1 {
+			log.Printf("JobId:%vfail! no avaliable service\n", jobInstance.ID)
+			return fmt.Errorf("no avaliable service")
+		}
+
 		var shardingResults []proto.Sharding
 		if config.ShardingStrategy.ShardingType == "static" {
 			tag := "shRes" + config.ID
-			data, err := configCenter.Get(tag)
+			//data, err := configCenter.Get(tag)
+			data, err := configCenter.GetByGroup(tag, "ShardingInfo")
 			if err != nil {
 				log.Printf("ConfigID:%v 无先前静态分片结果！", config.ID)
 			} else {
@@ -325,7 +317,8 @@ func (h *HttpExecutor) Execute(jobInstance proto.JobInstance) error {
 		_, ok := reShardings[config.ID]
 		// 动态分片 || 静态初次分片 || 静态重新分片
 		if config.ShardingStrategy.ShardingType == "dynamic" || len(shardingResults) < 1 || ok || (len(shardingResults) < config.ShardingStrategy.DefaultCount && len(shardingResults) < healthyNum) {
-			strs := strings.Split(config.ShardingStrategy.ParameterRole, ",")
+			str := strings.ReplaceAll(config.ShardingStrategy.ParameterRole, "，", ",")
+			strs := strings.Split(str, ",")
 			//1个分片怎么做？
 			n := len(strs)
 			parameters := make([]string, n)
@@ -356,17 +349,11 @@ func (h *HttpExecutor) Execute(jobInstance proto.JobInstance) error {
 							log.Printf("JobId:%v,GET:%v \n", jobInstance.ID, url)
 							status, _ := Get(url)
 							shardingRequest := ShardingRequest{
-								jobInstance.ID,
+								jobInstance,
 								config.ShardingStrategy.ShardingCount,
 								xx,
 								status,
-								jobInstance.ExecuteCount,
-								config.TargetService,
-								"GET",
 								halfUrl,
-								config.Task.Body,
-								config.Task.Header,
-								config.ID,
 							}
 							chMsg <- shardingRequest
 						}()
@@ -376,21 +363,14 @@ func (h *HttpExecutor) Execute(jobInstance proto.JobInstance) error {
 							log.Printf("JobId:%v,POST:%v \n", jobInstance.ID, url)
 							status, _ := Post(url, config.Task.Body, config.Task.Header, "application/json")
 							shardingRequest := ShardingRequest{
-								jobInstance.ID,
+								jobInstance,
 								config.ShardingStrategy.ShardingCount,
 								xx,
 								status,
-								jobInstance.ExecuteCount,
-								config.TargetService,
-								"POST",
 								halfUrl,
-								config.Task.Body,
-								config.Task.Header,
-								config.ID,
 							}
 							chMsg <- shardingRequest
 						}()
-						//Post(url, config.Task.Body, config.Task.Header, "application/json")
 					}
 					if config.ShardingStrategy.ShardingType == "static" {
 						shardingResults[i] = proto.Sharding{
@@ -415,41 +395,27 @@ func (h *HttpExecutor) Execute(jobInstance proto.JobInstance) error {
 							log.Printf("JobId:%v,GET:%v \n", jobInstance.ID, url)
 							status, _ := Get(url)
 							shardingRequest := ShardingRequest{
-								jobInstance.ID,
+								jobInstance,
 								config.ShardingStrategy.ShardingCount,
 								xx,
 								status,
-								jobInstance.ExecuteCount,
-								config.TargetService,
-								"GET",
 								halfUrl,
-								config.Task.Body,
-								config.Task.Header,
-								config.ID,
 							}
 							chMsg <- shardingRequest
 						}()
-						//Get(url)
 					} else {
 						go func() {
 							log.Printf("JobId:%v,POST:%v \n", jobInstance.ID, url)
 							status, _ := Post(url, config.Task.Body, config.Task.Header, "application/json")
 							shardingRequest := ShardingRequest{
-								jobInstance.ID,
+								jobInstance,
 								config.ShardingStrategy.ShardingCount,
 								xx,
 								status,
-								jobInstance.ExecuteCount,
-								config.TargetService,
-								"POST",
 								halfUrl,
-								config.Task.Body,
-								config.Task.Header,
-								config.ID,
 							}
 							chMsg <- shardingRequest
 						}()
-						//Post(url, config.Task.Body, config.Task.Header, "application/json")
 					}
 					if config.ShardingStrategy.ShardingType == "static" {
 						shardingResults[i] = proto.Sharding{
@@ -469,17 +435,11 @@ func (h *HttpExecutor) Execute(jobInstance proto.JobInstance) error {
 							log.Printf("JobId:%v,GET:%v \n", jobInstance.ID, url)
 							status, _ := Get(url)
 							shardingRequest := ShardingRequest{
-								jobInstance.ID,
+								jobInstance,
 								config.ShardingStrategy.ShardingCount,
 								xx,
 								status,
-								jobInstance.ExecuteCount,
-								config.TargetService,
-								"GET",
 								halfUrl,
-								config.Task.Body,
-								config.Task.Header,
-								config.ID,
 							}
 							chMsg <- shardingRequest
 						}()
@@ -489,17 +449,11 @@ func (h *HttpExecutor) Execute(jobInstance proto.JobInstance) error {
 							log.Printf("JobId:%v,POST:%v \n", jobInstance.ID, url)
 							status, _ := Post(url, config.Task.Body, config.Task.Header, "application/json")
 							shardingRequest := ShardingRequest{
-								jobInstance.ID,
+								jobInstance,
 								config.ShardingStrategy.ShardingCount,
 								xx,
 								status,
-								jobInstance.ExecuteCount,
-								config.TargetService,
-								"POST",
 								halfUrl,
-								config.Task.Body,
-								config.Task.Header,
-								config.ID,
 							}
 							chMsg <- shardingRequest
 						}()
@@ -520,7 +474,7 @@ func (h *HttpExecutor) Execute(jobInstance proto.JobInstance) error {
 
 				contentJson, _ := json.Marshal(shardingResults)
 				tag := "shRes" + config.ID
-				_, err := configCenter.Save(configcenter.Config{ID: tag, Content: string(contentJson)})
+				_, err := configCenter.Save(configcenter.Config{ID: tag, Group: "ShardingInfo", Content: string(contentJson)})
 
 				if err != nil {
 					log.Println("静态分片写入Config失败！")
@@ -545,17 +499,11 @@ func (h *HttpExecutor) Execute(jobInstance proto.JobInstance) error {
 						log.Printf("JobId:%v,GET:%v \n", jobInstance.ID, url)
 						status, _ := Get(url)
 						shardingRequest := ShardingRequest{
-							jobInstance.ID,
+							jobInstance,
 							config.ShardingStrategy.ShardingCount,
 							xx,
 							status,
-							jobInstance.ExecuteCount,
-							config.TargetService,
-							"GET",
 							halfUrl,
-							config.Task.Body,
-							config.Task.Header,
-							config.ID,
 						}
 						chMsg <- shardingRequest
 					}()
@@ -565,17 +513,11 @@ func (h *HttpExecutor) Execute(jobInstance proto.JobInstance) error {
 						log.Printf("JobId:%v,POST:%v \n", jobInstance.ID, url)
 						status, _ := Post(url, config.Task.Body, config.Task.Header, "application/json")
 						shardingRequest := ShardingRequest{
-							jobInstance.ID,
+							jobInstance,
 							config.ShardingStrategy.ShardingCount,
 							xx,
 							status,
-							jobInstance.ExecuteCount,
-							config.TargetService,
-							"POST",
 							halfUrl,
-							config.Task.Body,
-							config.Task.Header,
-							config.ID,
 						}
 						chMsg <- shardingRequest
 					}()

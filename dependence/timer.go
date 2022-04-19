@@ -27,11 +27,9 @@ type Task struct {
 	id       taskID
 	round    int
 	callback func()
-
-	async  bool
-	stop   bool
-	circle bool
-	// circleNum int
+	async    bool
+	stop     bool
+	circle   bool
 }
 
 func (t *Task) Reset() {

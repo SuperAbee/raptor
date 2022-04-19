@@ -13,5 +13,10 @@ const (
 	SINGLE_JOB                = "job"
 	DEPENDENCE_JOB            = "deJob"
 	DEPENDENCE_SUB_JOB        = "deSubJob"
-	INSTANCE_GROUP            = "INSTANCE"
+	JOB_GROUP                 = "Job"
+	DEPENDENCE_GROUP          = "Dependence"
+	TASK_SHARDING_GROUP       = "ShardingInfo"
+	JOB_INSTANCE_GROUP        = "JobInstance"
+	DEPENDENCE_INSTANCE_GROUP = "DependenceInstance"
+	DEPENDENCCE_DAG           = "DependenceDAG"
 )

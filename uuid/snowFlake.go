@@ -40,9 +40,14 @@ func NewSnowFlakeUUID(machineID int64) (*SnowFlakeUUID, error) {
 
 func (sf *SnowFlakeUUID) GenerateID() int64 {
 	sf.mu.Lock()
+	// 获取当前时间戳
 	now := time.Since(sf.epoch).Nanoseconds() / 1000000
+	// 与上次获取Id的时间进行对比
 	if now == sf.lastTime {
+		// 在同一毫秒中获取Id，计算当前序列号
 		sf.sequence = (sf.sequence + 1) & SeqNumMax
+
+		// 如果序列号达到最大值，则等到下一毫秒进行获取
 		if sf.sequence == 0 {
 			for now <= sf.lastTime {
 				now = time.Since(sf.epoch).Nanoseconds() / 1000000
@@ -52,6 +57,7 @@ func (sf *SnowFlakeUUID) GenerateID() int64 {
 		sf.sequence = 0
 	}
 	sf.lastTime = now
+	// 将Id通过位运算进行拼接
 	id := (now << timeBits) |
 		(sf.machineID << SeqNumBits) |
 		sf.sequence

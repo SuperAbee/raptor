@@ -2,6 +2,7 @@ package configcenter
 
 import (
 	"github.com/tidwall/gjson"
+	"strings"
 	"sync"
 )
 
@@ -34,7 +35,7 @@ func (m *memoryConfigCenter) GetByGroup(id, group string) (Config, error) {
 	return m.Get(id)
 }
 
-func (m *memoryConfigCenter) GetByKV(kv map[string]string, group string) ([]Config, error) {
+func (m *memoryConfigCenter) GetByKV(kv map[string]Search, group string) ([]Config, error) {
 	if group == "" {
 		group = defaultGroup
 	}
@@ -48,9 +49,16 @@ func (m *memoryConfigCenter) GetByKV(kv map[string]string, group string) ([]Conf
 				match = false
 				break
 			}
-			if gjson.Get(config.Content, k).String() != v {
-				match = false
-				break
+			if v.Exact {
+				if gjson.Get(config.Content, k).String() != v.Keyword {
+					match = false
+					break
+				}
+			} else {
+				if !strings.Contains(v.Keyword, gjson.Get(config.Content, k).String()) {
+					match = false
+					break
+				}
 			}
 		}
 		if match {

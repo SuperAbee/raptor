@@ -9,10 +9,13 @@ import (
 	"raptor/servicecenter"
 	"raptor/uuid"
 	"strings"
+	"sync"
 	"time"
 )
 
 type JobRegistry interface {
+	AddJob(config proto.Config)
+
 	Register(config proto.Config) error
 	Unregister(jobName string) error
 	GetJobData(jobName string) (proto.Config, error)
@@ -27,9 +30,11 @@ type JobCenter struct {
 	ConfigCenter  configcenter.ConfigCenter
 	EventCenter   *eventcenter.EventCenter
 	RunningJobs   map[string]RunningJob
-	Ip            string
-	Port          uint64
-	State         string
+	Schedulers    sync.Map
+
+	Ip    string
+	Port  uint64
+	State string
 }
 
 type RunningJob struct {
@@ -52,11 +57,16 @@ func New() *JobCenter {
 }
 
 func init() {
-	sf, _ = uuid.NewSnowFlakeUUID((time.Now().Unix() % 1024) + 1)
+	log.Println("jobcenter init")
+	var err error
+
+	sf, err = uuid.NewSnowFlakeUUID((time.Now().Unix() % 1024) + 1)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
 
 	//获取注册中心和配置中心
 	sc := servicecenter.New()
-
 	cc := configcenter.New()
 
 	//将本服务注册到注册中心
@@ -87,11 +97,13 @@ func init() {
 		State:         "running",
 	}
 
+	//定时同步调度器状态
+	go jobCenter.syncSchedulerList()
+
 	//监听任务状态
-	jobCenter.EventCenter.Subscribe("jobStart", onJobStart)
-	jobCenter.ConfigCenter.OnChange("jobChange", onJobChange)
-	jobCenter.EventCenter.Subscribe("jobFinished", onJobFinished)
-	jobCenter.EventCenter.Subscribe("jobTimeout", onJobTimeout)
+	jobCenter.EventCenter.Subscribe("job start", onJobStart)
+	jobCenter.EventCenter.Subscribe("job finished", onJobFinished)
+	jobCenter.EventCenter.Subscribe("job timeout", onJobTimeout)
 
 }
 
@@ -103,4 +115,32 @@ func GetOutBoundIP() (ip string, err error) {
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
 	ip = strings.Split(localAddr.String(), ":")[0]
 	return
+}
+
+func (j *JobCenter) syncSchedulerList() {
+	ticker := time.NewTicker(time.Second * 1)
+
+	syncOnce := func() {
+		service, err := j.ServiceCenter.GetService("scheduler")
+		if err != nil {
+			log.Fatalln(err.Error())
+		}
+
+		var newList sync.Map
+		for _, instance := range service.Hosts {
+			if instance.Healthy {
+				newList.Store(Node{instance.Ip, instance.Port, false}, false)
+				newList.Store(Node{instance.Ip, instance.Port, true}, false)
+			}
+		}
+		j.Schedulers = newList
+
+	}
+
+	syncOnce()
+
+	for range ticker.C {
+		syncOnce()
+	}
+
 }

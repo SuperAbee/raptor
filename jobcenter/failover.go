@@ -12,9 +12,13 @@ import (
 )
 
 func onJobTimeout(event *eventcenter.Event) {
-	jobCenter := New()
 	instance := event.Body.(proto.JobInstance)
-	log.Println(instance.ID + " ")
+	replace(instance)
+}
+
+func replace(instance proto.JobInstance) {
+	jobCenter := New()
+	log.Println(instance.ID + " timeout check master state")
 
 	deleyExecutor, err := dependence.NewDeleyExecutor()
 	if err != nil {
@@ -29,7 +33,7 @@ func onJobTimeout(event *eventcenter.Event) {
 
 	var remainNodes []Node
 	for i, node := range runningJob.Hosts {
-		if node.Ip == jobCenter.Ip {
+		if node.Ip == jobCenter.Ip && node.Port == jobCenter.Port {
 			remainNodes = runningJob.Hosts[i:]
 			break
 		}
@@ -42,25 +46,36 @@ func onJobTimeout(event *eventcenter.Event) {
 	//前置节点失联，接替主节点
 	log.Println("previous nodes connect failed, replace master")
 	//补充不足的从节点
+	fillUpNodes(remainNodes, 3, runningJob.Config.ID)
+	runningJob.Hosts = remainNodes
+	//作为主节点执行任务
+	instance.IsMaster = true
+	deleyExecutor.AddOrRun(instance)
+}
+
+func fillUpNodes(nodes []Node, aimLen int, jobID string) {
+	//补充从节点
+	if len(nodes) == aimLen {
+		return
+	}
 	Scheduler, err := jobCenter.ServiceCenter.GetService("scheduler")
 	if err != nil {
 		panic(err)
 	}
 	selectedHosts := selectHosts(Scheduler)
-	for i := 0; len(remainNodes) < 3; i++ {
-		if !contains(remainNodes, selectedHosts[i]) {
-			remainNodes = append(remainNodes, Node{selectedHosts[i].Ip, selectedHosts[i].Port, false})
+
+	if aimLen > len(selectedHosts) {
+		aimLen = len(selectedHosts)
+	}
+
+	for i := 0; len(nodes) < aimLen; i++ {
+		if !contains(nodes, selectedHosts[i]) {
+			nodes = append(nodes, Node{selectedHosts[i].Ip, selectedHosts[i].Port, false})
+			//通知对应节点
+			url := fmt.Sprintf("http://%s:%v%s?isMaster=%v&id=%s", selectedHosts[i].Ip, selectedHosts[i].Port, timingUrl, false, jobID)
+			http.Get(url)
 		}
 	}
-	runningJob.Hosts = remainNodes
-	//作为主节点执行任务
-	instance.IsMaster = true
-	deleyExecutor.AddOrRun(instance)
-
-}
-
-func replace(runningJob *RunningJob) bool {
-	return true
 }
 
 func contains(nodes []Node, host servicecenter.Instance) bool {

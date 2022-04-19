@@ -37,7 +37,7 @@ func init() {
 func ExecuteSingleTask(jobInstance *proto.JobInstance) {
 	fmt.Printf("任务 %s 开始执行 时间%s\n", jobInstance.ID, time.Now().String())
 	jobInstance.StartTime = time.Now().Unix()
-	saveInstanceConfig(*jobInstance)
+	saveInstanceConfig(*jobInstance, constants.JOB_INSTANCE_GROUP)
 	//向事件中心发送通知任务开始执行
 	event := eventcenter.NewEvent().WithBody(*jobInstance)
 	eventCenter.Publish("job start", event)
@@ -45,6 +45,10 @@ func ExecuteSingleTask(jobInstance *proto.JobInstance) {
 	go filter.NewChain(*jobInstance).Do()
 }
 
+//func retryTask(instanceId string) {
+//	instance, _ := getInstanceConfig(instanceId)
+//	ExecuteDependenceTask()
+//}
 func test(instance *proto.JobInstance) {
 	event := eventcenter.NewEvent().WithBody(*instance).WithHeader("status", constants.TASK_COMPLETED)
 	fmt.Println("job execute")
@@ -52,20 +56,21 @@ func test(instance *proto.JobInstance) {
 }
 
 func ExecuteDependenceTask(jobInstance *proto.JobInstance) (bool, error) {
+	index := crc32.ChecksumIEEE([]byte(jobInstance.ID)) % 10
+	fmt.Printf("lockB lock %v \n", index)
+	locks[index].Lock()
 	config := &jobInstance.Config
 	fmt.Printf("依赖任务---%s---开始执行\n", config.ID)
-	//向事件中心发送通知任务开始执行
+	// 向事件中心发送通知任务开始执行
 	event := eventcenter.NewEvent().WithBody(*jobInstance)
 	eventCenter.Publish("job start", event)
 	jobInstance.StartTime = time.Now().Unix()
 	// 保存实例信息
-	saveInstanceConfig(*jobInstance)
-	index := crc32.ChecksumIEEE([]byte(jobInstance.ID)) % 10
-	fmt.Printf("lockB lock %v \n", index)
-	locks[index].Lock()
+	saveInstanceConfig(*jobInstance, constants.DEPENDENCE_INSTANCE_GROUP)
+
 	findAndExcute(jobInstance.ID, &config.Dependencies)
-	//获取到任务后，更新任务状态
-	// 保存引来信息
+	// 获取到任务后，更新任务状态
+	// 保存实例信息
 	_, err := saveDepenConfig(jobInstance.ID, config.Dependencies)
 	if err != nil {
 		log.Println(err)
@@ -114,10 +119,14 @@ func AfterSingleComplete(jobInstance proto.JobInstance, status string) {
 	//更新此任务的实例状态
 	jobInstance.Status = status
 	jobInstance.EndTime = time.Now().Unix()
-	saveInstanceConfig(jobInstance)
 	//向事件中心发送通知任务结束
-	event := eventcenter.NewEvent().WithBody(jobInstance)
-	eventCenter.Publish("job end", event)
+	if jobInstance.Type == constants.DEPENDENCE_JOB {
+		saveInstanceConfig(jobInstance, constants.DEPENDENCE_INSTANCE_GROUP)
+		event := eventcenter.NewEvent().WithBody(jobInstance).WithHeader("status", status)
+		eventCenter.Publish("job finished", event)
+	} else {
+		saveInstanceConfig(jobInstance, constants.JOB_INSTANCE_GROUP)
+	}
 	fmt.Printf("任务 %v 完成", jobInstance.ID)
 	//额外判断 是依赖任务的子任务实例
 	if jobInstance.Type == constants.DEPENDENCE_SUB_JOB {
@@ -163,13 +172,13 @@ func findAndExcute(jobInstanceID string, depenConfig *proto.Dependency) {
 			}
 		}
 		if isFail {
-			instance, _ := getInstanceConfig(jobInstanceID)
+			instance, _ := getInstanceConfig(jobInstanceID, constants.DEPENDENCE_INSTANCE_GROUP)
 			event := eventcenter.NewEvent().WithBody(instance).WithHeader("status", constants.TASK_FAIL)
 			eventCenter.Publish("job complete", event)
 			fmt.Printf("依赖任务---%s---失败\n", jobInstanceID)
 		}
 		if allEnd {
-			instance, _ := getInstanceConfig(jobInstanceID)
+			instance, _ := getInstanceConfig(jobInstanceID, constants.DEPENDENCE_INSTANCE_GROUP)
 			event := eventcenter.NewEvent().WithBody(instance).WithHeader("status", constants.TASK_COMPLETED)
 			eventCenter.Publish("job complete", event)
 			fmt.Printf("依赖任务---%s---已完成\n", jobInstanceID)
@@ -207,7 +216,7 @@ func findAndExcute(jobInstanceID string, depenConfig *proto.Dependency) {
 			PreId:        jobInstanceID,
 			Status:       constants.TASK_RUNNING,
 		}
-		saveInstanceConfig(instance)
+		saveInstanceConfig(instance, constants.JOB_INSTANCE_GROUP)
 		nodeInfo.InstanceID = instance.ID
 		depenConfig.Nodes[task] = nodeInfo
 		//test(&instance)
@@ -215,17 +224,18 @@ func findAndExcute(jobInstanceID string, depenConfig *proto.Dependency) {
 	}
 }
 
-func saveInstanceConfig(instance proto.JobInstance) {
+func saveInstanceConfig(instance proto.JobInstance, group string) {
 	instanceConfig, _ := json.Marshal(instance)
 	configCenter.Save(configcenter.Config{
 		ID:      instance.ID,
+		Group:   group,
 		Content: string(instanceConfig),
 	})
 }
 
-func getInstanceConfig(id string) (proto.JobInstance, error) {
+func getInstanceConfig(id string, group string) (proto.JobInstance, error) {
 	//todo 此处应该加上group参数
-	config, _ := configCenter.Get(id)
+	config, _ := configCenter.GetByGroup(id, group)
 	instanceConfig := proto.JobInstance{}
 	err := json.Unmarshal([]byte(config.Content), &instanceConfig)
 	if err != nil {
@@ -237,7 +247,7 @@ func getInstanceConfig(id string) (proto.JobInstance, error) {
 }
 
 func getDepenConfig(ID string) (proto.Dependency, error) {
-	config, err := configCenter.Get(ID + "Dependence")
+	config, err := configCenter.GetByGroup(ID+"Dependence", constants.DEPENDENCCE_DAG)
 	if err != nil {
 		return proto.Dependency{}, err
 	}
@@ -255,5 +265,8 @@ func saveDepenConfig(mainID string, configDepen proto.Dependency) (bool, error) 
 		log.Fatal(err)
 		return false, err
 	}
-	return configCenter.Save(configcenter.Config{ID: mainID + "Dependence", Content: string(depen)})
+	return configCenter.Save(configcenter.Config{
+		ID:      mainID + "Dependence",
+		Group:   constants.DEPENDENCCE_DAG,
+		Content: string(depen)})
 }

@@ -35,6 +35,14 @@ func (m *MetricsPreFilter) Filter(instance *proto.JobInstance) error {
 		"type": instance.Config.Task.Type,
 		"target": instance.Config.TargetService,
 	}).Inc()
+	monitor.TaskProcessed.With(prometheus.Labels{
+		"type": instance.Config.Task.Type,
+		"target": instance.Config.TargetService,
+	}).Inc()
+	monitor.TaskDelaySummary.With(prometheus.Labels{
+		"type": instance.Config.Task.Type,
+		"target": instance.Config.TargetService,
+	}).Observe(float64(time.Now().UnixNano() - instance.ExecuteTime * 1000000000) / 1000000000)
 
 	return nil
 }
