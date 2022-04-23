@@ -29,7 +29,7 @@ type JobCenter struct {
 	ServiceCenter servicecenter.ServiceCenter
 	ConfigCenter  configcenter.ConfigCenter
 	EventCenter   *eventcenter.EventCenter
-	RunningJobs   map[string]RunningJob
+	RunningJobs   sync.Map
 	Schedulers    sync.Map
 
 	Ip    string
@@ -85,7 +85,7 @@ func init() {
 	es := eventcenter.New()
 
 	//当前服务运行的任务
-	rj := make(map[string]RunningJob)
+	var rj sync.Map
 
 	jobCenter = JobCenter{
 		ServiceCenter: sc,

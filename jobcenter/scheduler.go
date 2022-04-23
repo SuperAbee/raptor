@@ -33,7 +33,8 @@ func (j *JobCenter) TimingJob(isMaster bool, jobID string) error {
 	if err != nil {
 		return err
 	}
-	j.RunningJobs[jobID] = runningJob
+
+	j.RunningJobs.Store(jobID, runningJob)
 	instance := generateJobInstance(runningJob.Config, isMaster)
 	log.Printf("receieve job ID:%v name:%v isMaster:%v", jobID, runningJob.Config.Name, isMaster)
 
@@ -74,16 +75,24 @@ func onJobStart(event *eventcenter.Event) {
 
 	//计算下一次任务实例
 	//todo master重新上线的情况, 线程安全问题
-	newInstance := generateJobInstance(jobCenter.RunningJobs[instance.Config.ID].Config, instance.IsMaster)
+	var newInstance proto.JobInstance
+	if rj, ok := jobCenter.RunningJobs.Load(instance.Config.ID); ok {
+		newInstance = generateJobInstance(rj.(RunningJob).Config, instance.IsMaster)
+	}
 
 	if instance.IsMaster {
 		//检查从服务器状态并及时替换
-		hosts := jobCenter.RunningJobs[instance.Config.ID].Hosts
+		var hosts []Node
+		if rj, ok := jobCenter.RunningJobs.Load(instance.Config.ID); ok {
+			hosts = rj.(RunningJob).Hosts
+		}
+
 		for i := 0; i < len(hosts); i++ {
 			if _, ok := jobCenter.Schedulers.Load(hosts[i]); !ok {
 				hosts = append(hosts[:i], hosts[i+1:]...)
 			}
 		}
+
 		fillUpNodes(hosts, 3, instance.Config.ID)
 
 		//通知从节点任务状态
@@ -103,7 +112,8 @@ func onJobChange(config configcenter.Config) {
 	jobCenter := New()
 	var runningJob RunningJob
 	json.Unmarshal([]byte(config.Content), &runningJob)
-	jobCenter.RunningJobs[config.ID] = runningJob
+
+	jobCenter.RunningJobs.Store(config.ID, runningJob)
 }
 
 func onJobFinished(event *eventcenter.Event) {
